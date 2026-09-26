@@ -6,12 +6,12 @@ import "fmt"
 // monotonically increasing IDs (the determinism tie-breaker), derives a
 // private RNG stream per event, and feeds the priority queue.
 type Scheduler struct {
-	queue *PriorityQueue
-	clock *Clock
+	queue  *PriorityQueue
+	clock  *Clock
 	nextID uint64
 
-	runSeed   uint64 // base seed for per-event RNG streams
-	seeded    bool   // whether the run has a seed configured
+	runSeed uint64 // base seed for per-event RNG streams
+	seeded  bool   // whether the run has a seed configured
 
 	// trace, when non-nil, receives one line per scheduled and per
 	// processed event. It is an optional debugging aid.

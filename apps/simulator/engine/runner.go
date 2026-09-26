@@ -54,10 +54,12 @@ func (r *Runner) Run() *Results {
 		}
 		if r.Horizon != 0 && e.Timestamp >= r.Horizon {
 			results.StopReason = StopHorizon
+			r.scheduler.queue.Push(e) // never lose a pending event
 			break
 		}
 		if r.MaxEvents != 0 && results.Processed >= r.MaxEvents {
 			results.StopReason = StopMaxEvents
+			r.scheduler.queue.Push(e) // never lose a pending event
 			break
 		}
 
