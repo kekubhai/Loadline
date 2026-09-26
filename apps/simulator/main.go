@@ -1,11 +1,13 @@
 // Command simulator is the executable example for LOADLINE's simulation
-// stack: the discrete-event engine, the workload model, and the generic
-// component layer.
+// stack: engine + workload + components + failure injection + diagnosis.
 //
-// It derives a load plan from human-scale assumptions, simulates the basic
-// architecture (Client → API Server → Cache → Database) twice with the
-// same seed, prints the per-component metrics, and verifies both runs
-// produced identical results — proving deterministic execution end to end.
+// Scenario: a Client → API → Cache → DB architecture under a 1M-user
+// workload. Run 1 is the healthy baseline. Run 2 injects a cache crash
+// (with pass-through failover to the origin) for 15 seconds in the middle
+// of the run, with retry/timeout behavior configured. The cascade — extra
+// DB load, longer queues, rising latency, timeouts — EMERGES from the
+// component interactions; nothing about it is hardcoded. Both runs are
+// then analyzed by the automatic bottleneck diagnosis.
 //
 // Everything runs in simulated time: no wall-clock sleeps, no network, no
 // external services.
@@ -22,11 +24,13 @@ import (
 const seed = 42
 
 func main() {
-	// 1. Workload: inspectable derivation chain.
+	// Peak-load scenario (~1157 RPS): heavy enough that losing the cache
+	// pushes the database past its real service capacity — the full
+	// cascade emerges and the diagnosis has something to find.
 	spec := workload.Spec{
 		TotalUsers:            1_000_000,
-		DAU:                   100_000,
-		RequestsPerUserPerDay: 20,
+		DAU:                   500_000,
+		RequestsPerUserPerDay: 40,
 		PeakMultiplier:        5,
 		ReadWriteRatio:        4, // 80% read / 20% write
 		PayloadBytes:          4096,
@@ -38,7 +42,6 @@ func main() {
 	}
 	printPlan(plan)
 
-	// 2. Architecture: Client → API Server → Cache → Database.
 	arch := sim.Architecture{
 		Name: "basic-web",
 		Components: []sim.ComponentSpec{
@@ -48,7 +51,7 @@ func main() {
 			{ID: "cache", Kind: sim.KindCache, Concurrency: 2, QueueLimit: 100,
 				HitRatio: 0.8, DefaultServiceTimeMillis: 0.1},
 			{ID: "db", Kind: sim.KindDatabase, Concurrency: 4, QueueLimit: 20,
-				CapacityRPS: 400, DefaultServiceTimeMillis: 5},
+				CapacityRPS: 500, DefaultServiceTimeMillis: 5},
 		},
 		Links: []sim.Link{
 			{From: "client", To: "api"},
@@ -61,27 +64,44 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 3. Simulate twice with the same seed; results must be identical.
 	const durationMS = 60_000 // one simulated minute
-	run1, err := sim.Simulate(arch, spec, sim.Options{Seed: seed, DurationMS: durationMS})
-	if err != nil {
-		fmt.Println("simulation error:", err)
-		os.Exit(1)
-	}
-	run2, err := sim.Simulate(arch, spec, sim.Options{Seed: seed, DurationMS: durationMS})
+
+	// Run 1: healthy baseline.
+	base, err := sim.Simulate(arch, spec, sim.Options{
+		Seed:       seed,
+		DurationMS: durationMS,
+		Retry:      sim.RetryPolicy{MaxRetries: 2, BackoffBaseMS: 5, TimeoutMS: 50},
+		RetryOn:    []string{"api", "cache"},
+	})
 	if err != nil {
 		fmt.Println("simulation error:", err)
 		os.Exit(1)
 	}
 
-	printMetrics(run1)
-
-	if metricsEqual(run1.Metrics, run2.Metrics) {
-		fmt.Println("determinism: OK — identical seed produced identical metrics")
-	} else {
-		fmt.Println("determinism: FAILED — runs diverged")
+	// Run 2: cache crashes (pass-through) from t=20s to t=35s.
+	crash, err := sim.Simulate(arch, spec, sim.Options{
+		Seed:       seed, // same arrivals → controlled comparison
+		DurationMS: durationMS,
+		Retry:      sim.RetryPolicy{MaxRetries: 2, BackoffBaseMS: 5, TimeoutMS: 50},
+		RetryOn:    []string{"api", "cache"},
+		Failures: []sim.Failure{{
+			Target: "cache", Type: sim.FailureCrash,
+			StartMS: 20_000, DurationMS: 15_000,
+			Config: sim.FailureConfig{PassThrough: true},
+		}},
+	})
+	if err != nil {
+		fmt.Println("simulation error:", err)
 		os.Exit(1)
 	}
+
+	fmt.Println("################ RUN 1 — healthy baseline ################")
+	printMetrics(base)
+	printDiagnosis(sim.DiagnoseWithBaseline(base.Metrics, base.Metrics), "baseline")
+
+	fmt.Println("################ RUN 2 — cache crash 20s→35s ################")
+	printMetrics(crash)
+	printDiagnosis(sim.DiagnoseWithBaseline(crash.Metrics, base.Metrics), "crash vs baseline")
 }
 
 func printPlan(p workload.Plan) {
@@ -96,46 +116,43 @@ func printPlan(p workload.Plan) {
 func printMetrics(r *sim.RunResult) {
 	m := r.Metrics
 	fmt.Println("== system ==")
-	fmt.Printf("window %.0fs: generated %d, completed %d, rejected %d, in-flight %d\n",
-		m.DurationMS/1000, m.Generated, m.Completed, m.Rejected, m.InFlight)
+	fmt.Printf("window %.0fs: generated %d, completed %d, rejected %d, failed %d (timeouts %d, drops %d), in-flight %d\n",
+		m.DurationMS/1000, m.Generated, m.Completed, m.Rejected, m.Failed, m.Timeouts, m.Dropped, m.InFlight)
+	fmt.Printf("error rate %.2f%%, timeout rate %.2f%%\n", m.ErrorRate*100, m.TimeoutRate*100)
 	fmt.Printf("latency ms: avg %.2f  p50 %.2f  p95 %.2f  p99 %.2f  max %.2f\n\n",
 		m.AvgLatencyMS, m.P50MS, m.P95MS, m.P99MS, m.MaxLatencyMS)
 
 	fmt.Println("== components ==")
-	fmt.Printf("%-8s %-14s %9s %9s %9s %7s %7s %8s %9s\n",
-		"ID", "KIND", "ARRIVED", "COMPLETED", "REJECTED", "QDEPTH", "QMAX", "UTIL", "ARR-RPS")
+	fmt.Printf("%-8s %-14s %8s %8s %8s %8s %6s %6s %7s %8s %8s\n",
+		"ID", "KIND", "ARRIVED", "COMPL", "REJECT", "FAILED", "QMAX", "TREND", "UTIL", "THR-RPS", "ARR-RPS")
 	for _, c := range m.Components {
 		util := "-"
 		if c.Utilization > 0 {
 			util = fmt.Sprintf("%.1f%%", c.Utilization*100)
 		}
-		sat := ""
-		if c.Saturated {
-			sat = " !SAT"
-		}
-		fmt.Printf("%-8s %-14s %9d %9d %9d %7d %7d %8s %9.1f%s\n",
-			c.ID, c.Kind, c.Arrived, c.Completed, c.Rejected,
-			c.QueueDepth, c.MaxQueueDepth, util, c.ArrivalRPS, sat)
+		fmt.Printf("%-8s %-14s %8d %8d %8d %8d %6d %6s %7s %8.1f %8.1f\n",
+			c.ID, c.Kind, c.Arrived, c.Completed, c.Rejected, c.Failed,
+			c.MaxQueueDepth, c.QueueTrend, util, c.ThroughputRPS, c.ArrivalRPS)
 	}
-	fmt.Printf("\nevents: processed %d, scheduled %d, stop=%s (sim time %s)\n",
-		r.Events.Processed, r.Events.Scheduled, r.Events.StopReason, r.Events.FinalTime)
+	fmt.Printf("\nevents: processed %d, stop=%s (sim time %s)\n\n",
+		r.Events.Processed, r.Events.StopReason, r.Events.FinalTime)
 }
 
-func metricsEqual(a, b sim.Metrics) bool {
-	if a.Generated != b.Generated || a.Completed != b.Completed ||
-		a.Rejected != b.Rejected || a.InFlight != b.InFlight {
-		return false
-	}
-	if a.AvgLatencyMS != b.AvgLatencyMS || a.P99MS != b.P99MS {
-		return false
-	}
-	if len(a.Components) != len(b.Components) {
-		return false
-	}
-	for i := range a.Components {
-		if a.Components[i] != b.Components[i] {
-			return false
+func printDiagnosis(d sim.Diagnosis, label string) {
+	fmt.Printf("== diagnosis (%s) ==\n", label)
+	fmt.Println(d.Summary)
+	for _, b := range d.Bottlenecks {
+		fmt.Printf("  Bottleneck: %s (%s) — severity %s\n", b.ComponentID, b.Kind, b.Severity)
+		fmt.Println("  Why:")
+		for _, r := range b.Reasons {
+			fmt.Printf("    - %s\n", r)
 		}
 	}
-	return true
+	if len(d.Impacts) > 0 && !d.Healthy {
+		fmt.Println("  Impact:")
+		for _, imp := range d.Impacts {
+			fmt.Printf("    - %s\n", imp)
+		}
+	}
+	fmt.Println()
 }

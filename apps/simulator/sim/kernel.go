@@ -8,20 +8,6 @@ import (
 	"github.com/kekubhai/Loadline/apps/simulator/workload"
 )
 
-// Request is the mutable state traveling through the architecture. One
-// request is at exactly one place at any simulated instant (fan-out makes
-// independent copies).
-type Request struct {
-	ID           uint64
-	Read         bool   // true = read op, false = write op
-	Next         string // component the request is heading to
-	Path         []string
-	StartMS      float64 // simulated ms when the client generated it
-	EndMS        float64 // simulated ms when it completed or was rejected
-	QueueEnterMS float64 // when it joined the current component's queue
-	CacheHit     bool
-}
-
 // ComponentRuntime is a component's live state during a run.
 type ComponentRuntime struct {
 	spec ComponentSpec
@@ -29,24 +15,96 @@ type ComponentRuntime struct {
 	queue    []*Request
 	inFlight int
 
+	// failure is the active injected failure, or nil when healthy.
+	failure *failState
+
 	// Metrics (see ComponentMetrics for definitions).
 	Arrived       uint64
 	Completed     uint64
 	Rejected      uint64
+	Failed        uint64
 	MaxQueueDepth int
 	BusySumMS     float64
 	WaitSumMS     float64
 	WaitCount     uint64
 }
 
+// Request is the mutable state traveling through the architecture. One
+// request is at exactly one place at any simulated instant (fan-out makes
+// independent copies).
+type Request struct {
+	ID      uint64
+	Read    bool // true = read op, false = write op
+	Path    []string
+	StartMS float64 // simulated ms when the client generated it
+	EndMS   float64 // simulated ms when it completed or was rejected
+
+	QueueEnterMS float64 // when it joined the current component's queue
+	CacheHit     bool
+
+	// Attempt is 1 on the first try; retries increment it.
+	Attempt int
+	// RetriesLeft counts remaining retries for this request.
+	RetriesLeft int
+	// Prev is the component that forwarded the request here (the caller).
+	// When a hop fails, the CALLER — not the failing component — performs
+	// the retry, matching real client behavior.
+	Prev string
+	// TimeoutMS is the end-to-end budget; exceeding it fails the request
+	// as a timeout. Zero means no timeout.
+	TimeoutMS float64
+}
+
+// FailureRecord summarizes one request-level failure for reporting.
+// ComponentID is where the failure was detected (the serving component);
+// CallerID is the upstream component that initiated the request and — for
+// timeouts — whose budget was exceeded.
+type FailureRecord struct {
+	RequestID   uint64
+	ComponentID string
+	CallerID    string
+	Kind        string // "timeout", "error", "dropped", "crash"
+	Attempt     int
+	AtMS        float64
+	LatencyMS   float64
+	Path        []string
+}
+
+// RetryPolicy describes retry/timeout behavior applied by the components
+// named in Options.RetryOn.
+type RetryPolicy struct {
+	// MaxRetries is the number of retries after the first attempt.
+	MaxRetries int
+	// BackoffBaseMS is the mean exponential backoff before the first
+	// retry; it doubles per subsequent attempt.
+	BackoffBaseMS float64
+	// TimeoutMS is the end-to-end request budget. Zero means none.
+	TimeoutMS float64
+}
+
 // Options configures a simulation run.
 type Options struct {
 	// Seed drives all randomness: arrival gaps, read/write labels, cache
-	// hits, per-event RNG streams.
+	// hits, failure rolls, backoff draws, per-event RNG streams.
 	Seed uint64
 	// DurationMS is the simulated horizon: arrivals are generated up to
 	// this instant; events at or beyond it are left pending.
 	DurationMS float64
+
+	// Failures are validated, then injected at their start times.
+	Failures []Failure
+
+	// Retry configures the retry/timeout behavior of the components named
+	// in RetryOn. Retries re-enter the same component the attempt failed
+	// at (crash pass-through retries at the downstream target).
+	Retry RetryPolicy
+	// RetryOn lists component IDs that may retry failed requests they
+	// forwarded. Empty disables retries everywhere.
+	RetryOn []string
+
+	// TrackWindows, when > 0, samples utilization/queue depth every N
+	// simulated milliseconds so diagnosis can detect growing queues.
+	TrackWindows int
 }
 
 // ComponentMetrics is a point-in-time report for one component.
@@ -56,32 +114,41 @@ type Options struct {
 //   - Completed:    cumulative requests that finished service here and
 //     hopped onward or terminated with a response.
 //   - Rejected:     cumulative requests refused at the door because the
-//     concurrency slots were full and the queue was at its
-//     limit. Rejected requests never occupy service time.
+//     concurrency slots were full and the queue was at its limit.
+//     Rejected requests never occupy service time.
+//   - Failed:       cumulative requests that failed while at this
+//     component (timeout, injected error, crash, drop).
 //   - QueueDepth:   requests currently waiting for a slot (instantaneous).
 //   - MaxQueueDepth: high-water mark of QueueDepth (cumulative max).
 //   - InFlight:     requests currently in service (instantaneous).
-//   - Utilization:  BusySumMS / window — the fraction of the simulated
-//     window the component's concurrency slots were busy
-//     (0..1, can exceed 1 only if Concurrency is 0, in which
-//     case it is not reported).
+//   - Utilization:  BusySumMS / (concurrency × window) — average fraction
+//     of the component's service capacity in use over the run window.
 //   - AvgQueueWaitMS: mean time requests spent in this component's queue
-//     before service (0 if none waited).
-//   - ArrivalRPS:   Arrived divided by the simulated window (average, not
-//     instantaneous).
+//     before service.
+//   - ThroughputRPS: Completed divided by the simulated window (average).
+//   - ArrivalRPS:   Arrived divided by the simulated window (average).
 //   - Saturated:    ArrivalRPS exceeded CapacityRPS (when CapacityRPS > 0).
+//   - AvgServiceMS: mean service time actually executed (busy-ms over
+//     completions) — real measured data, not the spec value.
+//   - QueueTrend:   direction of occupancy over the run's sampled windows
+//     ("growing", "draining", "stable"; "unknown" without samples).
 type ComponentMetrics struct {
 	ID             string
 	Kind           ComponentKind
 	Arrived        uint64
 	Completed      uint64
 	Rejected       uint64
+	Failed         uint64
 	QueueDepth     int
 	MaxQueueDepth  int
 	InFlight       int
 	Utilization    float64
 	AvgQueueWaitMS float64
+	AvgServiceMS   float64
+	ThroughputRPS  float64
 	ArrivalRPS     float64
+	CapacityRPS    float64
+	QueueTrend     string
 	Saturated      bool
 }
 
@@ -90,22 +157,35 @@ type ComponentMetrics struct {
 //   - Generated: requests the workload produced.
 //   - Completed: requests that received a full response.
 //   - Rejected:  requests refused at some component's capacity limit.
-//   - InFlight:  Generated - Completed - Rejected (still pending at
-//     horizon; large values mean the horizon is too short or
-//     the system ishopelessly saturated).
-//   - Latency percentiles are nearest-rank over completed requests only.
+//   - Failed:    requests terminated by timeout, injected error, crash,
+//     or drop (retries exhausted or no retry configured).
+//   - InFlight:  Generated - Completed - Rejected - Failed (still pending
+//     at horizon; large values mean the horizon is too short or the
+//     system is hopelessly saturated).
+//   - ErrorRate / TimeoutRate / DroppedRate are over Generated.
+//   - Latency percentiles are nearest-rank over terminal outcomes:
+//     completed requests plus requests that failed mid-path (timeout,
+//     injected error, drop — at their failure latency, which is what the
+//     caller actually experienced). Admission rejections are excluded
+//     (they never entered service; they are tracked as a rate).
 type Metrics struct {
 	DurationMS   float64
 	Generated    uint64
 	Completed    uint64
 	Rejected     uint64
+	Failed       uint64
+	Timeouts     uint64
+	Dropped      uint64
 	InFlight     uint64
+	ErrorRate    float64
+	TimeoutRate  float64
 	AvgLatencyMS float64
 	P50MS        float64
 	P95MS        float64
 	P99MS        float64
 	MaxLatencyMS float64
 	Components   []ComponentMetrics
+	Failures     []FailureRecord
 }
 
 // RunResult bundles everything one run produced.
@@ -128,11 +208,32 @@ type Kernel struct {
 	ids      *workload.IDAllocator
 	splitter *workload.Splitter
 	arrival  *workload.ArrivalClock
+	failRNG  *engine.RNG // failure/backoff rolls, independent stream
+
+	retryOn map[string]bool
 
 	latencies []float64
 	generated uint64
 	completed uint64
 	rejected  uint64
+	failed    uint64
+	timeouts  uint64
+	dropped   uint64
+
+	failures []FailureRecord
+
+	// window tracking for trend diagnosis
+	windowMS   float64
+	windows    []windowSample
+	samplerDue float64
+	sampledIDs []string // components tracked by the sampler
+}
+
+// windowSample is one point-in-time snapshot of a component's occupancy.
+type windowSample struct {
+	atMS      float64
+	occupancy int // in service + queued
+	inService int
 }
 
 // newKernel builds runtime state from the architecture. Callers must
@@ -147,6 +248,12 @@ func newKernel(arch Architecture, plan workload.Plan, opts Options) *Kernel {
 		ids:      workload.NewIDAllocator(),
 		splitter: workload.NewSplitter(opts.Seed^0xA11CE, plan.ReadFraction),
 		arrival:  workload.NewArrivalClock(opts.Seed^0xB0B, plan.MeanInterArrivalMillis),
+		failRNG:  engine.NewRNG(opts.Seed ^ 0xF41A11),
+		retryOn:  make(map[string]bool, len(opts.RetryOn)),
+		windowMS: float64(opts.TrackWindows),
+	}
+	for _, id := range opts.RetryOn {
+		k.retryOn[id] = true
 	}
 	for _, c := range arch.Components {
 		k.runtimes[c.ID] = &ComponentRuntime{spec: c}
@@ -157,6 +264,11 @@ func newKernel(arch Architecture, plan workload.Plan, opts Options) *Kernel {
 	}
 	for _, l := range arch.Links {
 		k.outgoing[l.From] = append(k.outgoing[l.From], l)
+	}
+	for _, id := range k.order {
+		if k.runtimes[id].spec.Concurrency > 0 {
+			k.sampledIDs = append(k.sampledIDs, id)
+		}
 	}
 	return k
 }
@@ -180,6 +292,18 @@ func Simulate(arch Architecture, spec workload.Spec, opts Options) (*RunResult, 
 	if opts.Seed == 0 {
 		opts.Seed = 1
 	}
+	known := map[string]ComponentSpec{}
+	for _, c := range arch.Components {
+		known[c.ID] = c
+	}
+	for i, f := range opts.Failures {
+		if err := f.validate(known); err != nil {
+			return nil, fmt.Errorf("sim: failure %d: %w", i, err)
+		}
+	}
+	if opts.TrackWindows <= 0 {
+		opts.TrackWindows = 1000 // default: 1s trend windows
+	}
 
 	clock := engine.NewClock()
 	pq := engine.NewPriorityQueue()
@@ -199,6 +323,34 @@ func Simulate(arch Architecture, spec workload.Spec, opts Options) (*RunResult, 
 		Handler:   k.onArrival,
 	})
 
+	// Start the periodic occupancy sampler for trend diagnosis.
+	k.startSampler(sched)
+
+	// Inject failures: each schedules its own start/stop events.
+	for _, f := range opts.Failures {
+		target, ftype := f.Target, f.Type
+		sched.Schedule(engine.Event{
+			Timestamp:   engine.Time(delay(f.StartMS)),
+			Type:        "failure.start",
+			ComponentID: f.Target,
+			Handler: func(ctx *engine.Context) []engine.Event {
+				k.rt(target).failure = &failState{failure: f}
+				ctx.Logf("FAILURE %s ON %s", ftype, target)
+				return nil
+			},
+		})
+		sched.Schedule(engine.Event{
+			Timestamp:   engine.Time(delay(f.StartMS + f.DurationMS)),
+			Type:        "failure.stop",
+			ComponentID: f.Target,
+			Handler: func(ctx *engine.Context) []engine.Event {
+				k.rt(target).failure = nil
+				ctx.Logf("RECOVERY %s", target)
+				return nil
+			},
+		})
+	}
+
 	events := runner.Run()
 	return &RunResult{
 		Plan:    plan,
@@ -207,13 +359,27 @@ func Simulate(arch Architecture, spec workload.Spec, opts Options) (*RunResult, 
 	}, nil
 }
 
+// startSampler begins the periodic occupancy sampling used by trend
+// diagnosis. Each sample schedules the next; the horizon ends the chain.
+func (k *Kernel) startSampler(sched *engine.Scheduler) {
+	sched.Schedule(engine.Event{
+		Timestamp: engine.Time(delay(k.windowMS)),
+		Type:      "metrics.sample",
+		Handler:   k.sampleWindow,
+	})
+}
+
 // onArrival generates one request and keeps the Poisson arrival process
 // going.
 func (k *Kernel) onArrival(ctx *engine.Context) []engine.Event {
 	req := &Request{
-		ID:      k.ids.Next(),
-		Read:    k.splitter.IsRead(),
-		StartMS: nowMillis(ctx),
+		ID:          k.ids.Next(),
+		Read:        k.splitter.IsRead(),
+		StartMS:     nowMillis(ctx),
+		Attempt:     1,
+		RetriesLeft: k.opts.Retry.MaxRetries,
+		// End-to-end budget: applied to every request when configured.
+		TimeoutMS: k.opts.Retry.TimeoutMS,
 	}
 	k.generated++
 	ctx.Logf("generated request %d (read=%v)", req.ID, req.Read)
@@ -225,11 +391,37 @@ func (k *Kernel) onArrival(ctx *engine.Context) []engine.Event {
 }
 
 // dispatch admits a request into a component: it either takes a service
-// slot, joins the queue, or is rejected when both are full.
+// slot, joins the queue, or is rejected when both are full. Crash and
+// network-failure state short-circuit admission.
 func (k *Kernel) dispatch(ctx *engine.Context, compID string, r *Request) {
 	rt := k.rt(compID)
 	rt.Arrived++
 	r.Path = append(r.Path, compID)
+
+	// Failure admission behavior.
+	if fs := rt.failure; fs.active() {
+		switch fs.failure.Type {
+		case FailureCrash:
+			if fs.failure.Config.PassThrough {
+				// Failed component forwards untouched (cache → origin).
+				ctx.Logf("request %d bypasses crashed %s (pass-through)", r.ID, compID)
+				k.hop(ctx, compID, r)
+				return
+			}
+			rt.Failed++
+			ctx.Logf("request %d CRASH-FAIL at %s", r.ID, compID)
+			k.failRequest(ctx, compID, r, "crash")
+			return
+		case FailureNetwork:
+			if fs.failure.Config.PacketLossRate > 0 &&
+				k.failRNG.Float64() < fs.failure.Config.PacketLossRate {
+				rt.Failed++
+				ctx.Logf("request %d DROPPED at %s (packet loss)", r.ID, compID)
+				k.failRequest(ctx, compID, r, "dropped")
+				return
+			}
+		}
+	}
 
 	// Unconstrained components (client, network) are pure latency hops.
 	if rt.spec.Concurrency <= 0 {
@@ -280,9 +472,14 @@ func (k *Kernel) beginService(ctx *engine.Context, compID string, r *Request) {
 	}
 
 	serviceMS := rt.spec.ServiceTime(opFor(rt.spec, r))
+	if fs := rt.failure; fs.active() {
+		switch fs.failure.Type {
+		case FailureLatency, FailureNetwork:
+			serviceMS += fs.failure.Config.AddedLatencyMillis
+		}
+	}
 	ctx.Logf("request %d begins %s at %s for %.3fms", r.ID, opFor(rt.spec, r), compID, serviceMS)
 
-	// Capture per-request values for the completion event.
 	svcMS := serviceMS
 	startMS := nowMillis(ctx)
 	comp := compID
@@ -299,13 +496,34 @@ func (k *Kernel) beginService(ctx *engine.Context, compID string, r *Request) {
 	})
 }
 
-// finishService releases the slot, records metrics, and moves the request
-// onward — with cache-hit routing handled here.
+// finishService releases the slot, applies error injections, handles the
+// cache hit path, and moves the request onward.
 func (k *Kernel) finishService(ctx *engine.Context, compID string, r *Request, serviceMS, startMS float64) {
 	rt := k.rt(compID)
 	rt.inFlight--
 	rt.Completed++
 	rt.BusySumMS += serviceMS
+
+	// End-to-end timeout check: the budget applies at every hop exit.
+	if r.TimeoutMS > 0 && nowMillis(ctx)-r.StartMS > r.TimeoutMS {
+		rt.Failed++
+		ctx.Logf("request %d TIMEOUT after %s hop (%.1fms elapsed > %.1fms budget)",
+			r.ID, compID, nowMillis(ctx)-r.StartMS, r.TimeoutMS)
+		k.failRequest(ctx, compID, r, "timeout")
+		k.pump(ctx, compID)
+		return
+	}
+
+	// Injected error rate: a fraction of serviced requests fail here.
+	if fs := rt.failure; fs.active() && fs.failure.Type == FailureErrorRate {
+		if k.failRNG.Float64() < fs.failure.Config.ErrorRate {
+			rt.Failed++
+			ctx.Logf("request %d ERROR at %s (injected error rate)", r.ID, compID)
+			k.failRequest(ctx, compID, r, "error")
+			k.pump(ctx, compID)
+			return
+		}
+	}
 
 	// Cache behavior: a read that hits is served here and terminates with
 	// a response; misses and writes continue downstream.
@@ -320,7 +538,6 @@ func (k *Kernel) finishService(ctx *engine.Context, compID string, r *Request, s
 		ctx.Logf("request %d cache miss at %s", r.ID, compID)
 	}
 
-	// Free the slot for whoever is waiting before the request hops on.
 	k.pump(ctx, compID)
 	k.hop(ctx, compID, r)
 }
@@ -346,7 +563,7 @@ func (k *Kernel) route(fromID string, r *Request) []string {
 }
 
 // hop moves a request to its next component(s), or terminates it with a
-// response when no route remains. Returns true if the request terminated.
+// response when no route remains.
 func (k *Kernel) hop(ctx *engine.Context, fromID string, r *Request) bool {
 	targets := k.route(fromID, r)
 	if len(targets) == 0 {
@@ -355,10 +572,12 @@ func (k *Kernel) hop(ctx *engine.Context, fromID string, r *Request) bool {
 	}
 	for i, t := range targets {
 		if i == 0 {
+			r.Prev = fromID
 			k.dispatch(ctx, t, r)
 			continue
 		}
 		clone := *r // fan-out: independent legs, same logical request
+		clone.Prev = fromID
 		clone.Path = append([]string(nil), r.Path...)
 		k.dispatch(ctx, t, &clone)
 	}
@@ -368,18 +587,67 @@ func (k *Kernel) hop(ctx *engine.Context, fromID string, r *Request) bool {
 // completeRequest records a successful end-to-end response.
 func (k *Kernel) completeRequest(ctx *engine.Context, r *Request) {
 	r.EndMS = nowMillis(ctx)
-	lat := r.EndMS - r.StartMS
-	k.latencies = append(k.latencies, lat)
+	k.latencies = append(k.latencies, r.EndMS-r.StartMS)
 	k.completed++
-	ctx.Logf("request %d completed in %.3fms via %v", r.ID, lat, r.Path)
+	ctx.Logf("request %d completed in %.3fms via %v", r.ID, r.EndMS-r.StartMS, r.Path)
 }
 
-// rejectRequest terminates a request that could not be admitted. The
-// request does not occupy further service time; its partial path remains
-// recorded in the components it did reach.
+// rejectRequest terminates a request that could not be admitted.
 func (k *Kernel) rejectRequest(ctx *engine.Context, r *Request) {
 	r.EndMS = nowMillis(ctx)
 	k.rejected++
+}
+
+// failRequest terminates a request after a failure. If the failing
+// component is in RetryOn and retries remain, a retry is scheduled
+// instead (backoff, then re-dispatch at the failing component); the
+// failure is recorded per attempt but does not count as terminal yet.
+func (k *Kernel) failRequest(ctx *engine.Context, compID string, r *Request, kind string) {
+	k.failures = append(k.failures, FailureRecord{
+		RequestID:   r.ID,
+		ComponentID: compID,
+		CallerID:    r.Prev,
+		Kind:        kind,
+		Attempt:     r.Attempt,
+		AtMS:        nowMillis(ctx),
+		LatencyMS:   nowMillis(ctx) - r.StartMS,
+		Path:        append([]string(nil), r.Path...),
+	})
+
+	if k.retryOn[r.Prev] && r.RetriesLeft > 0 {
+		r.RetriesLeft--
+		r.Attempt++
+		backoff := k.opts.Retry.BackoffBaseMS * float64(int(1)<<(r.Attempt-2)) // doubles per attempt
+		if backoff > 0 {
+			backoff *= 0.5 + k.failRNG.ExpFloat64() // jittered exponential, mean backoff
+		}
+		ctx.Logf("request %d will RETRY at %s in %.2fms (attempt %d, %d left)",
+			r.ID, compID, backoff, r.Attempt, r.RetriesLeft)
+		next := *r
+		next.Path = append([]string(nil), r.Path...)
+		ctx.Schedule(delay(backoff), engine.Event{
+			Type:        "request.retry",
+			ComponentID: compID,
+			RequestID:   r.ID,
+			Handler: func(ctx *engine.Context) []engine.Event {
+				k.dispatch(ctx, compID, &next)
+				return nil
+			},
+		})
+		return
+	}
+
+	// Terminal failure: the caller experienced latency up to the failure
+	// point, so it enters the latency distribution (see Metrics docs).
+	r.EndMS = nowMillis(ctx)
+	k.latencies = append(k.latencies, r.EndMS-r.StartMS)
+	k.failed++
+	switch kind {
+	case "timeout":
+		k.timeouts++
+	case "dropped":
+		k.dropped++
+	}
 }
 
 // opFor maps (component kind, request class) to the priced operation.
@@ -408,6 +676,25 @@ func opFor(spec ComponentSpec, r *Request) Op {
 	}
 }
 
+// sampleWindow records occupancy snapshots for trend diagnosis.
+func (k *Kernel) sampleWindow(ctx *engine.Context) []engine.Event {
+	at := nowMillis(ctx)
+	for _, id := range k.order {
+		rt := k.rt(id)
+		if rt.spec.Concurrency <= 0 {
+			continue
+		}
+		k.windows = append(k.windows, windowSample{
+			atMS:      at,
+			occupancy: rt.inFlight + len(rt.queue),
+			inService: rt.inFlight,
+		})
+	}
+	k.samplerDue = at + k.windowMS
+	ctx.Schedule(delay(k.windowMS), engine.Event{Type: "metrics.sample", Handler: k.sampleWindow})
+	return nil
+}
+
 // snapshot builds the immutable metrics report.
 func (k *Kernel) snapshot(durationMS float64) Metrics {
 	m := Metrics{
@@ -415,7 +702,15 @@ func (k *Kernel) snapshot(durationMS float64) Metrics {
 		Generated:  k.generated,
 		Completed:  k.completed,
 		Rejected:   k.rejected,
-		InFlight:   k.generated - k.completed - k.rejected,
+		Failed:     k.failed,
+		Timeouts:   k.timeouts,
+		Dropped:    k.dropped,
+		InFlight:   k.generated - k.completed - k.rejected - k.failed,
+		Failures:   k.failures,
+	}
+	if k.generated > 0 {
+		m.ErrorRate = float64(k.failed) / float64(k.generated)
+		m.TimeoutRate = float64(k.timeouts) / float64(k.generated)
 	}
 	if len(k.latencies) > 0 {
 		sorted := append([]float64(nil), k.latencies...)
@@ -439,9 +734,11 @@ func (k *Kernel) snapshot(durationMS float64) Metrics {
 			Arrived:       rt.Arrived,
 			Completed:     rt.Completed,
 			Rejected:      rt.Rejected,
+			Failed:        rt.Failed,
 			QueueDepth:    len(rt.queue),
 			MaxQueueDepth: rt.MaxQueueDepth,
 			InFlight:      rt.inFlight,
+			ThroughputRPS: float64(rt.Completed) / windowSec,
 			ArrivalRPS:    float64(rt.Arrived) / windowSec,
 		}
 		if rt.WaitCount > 0 {
@@ -450,12 +747,61 @@ func (k *Kernel) snapshot(durationMS float64) Metrics {
 		if rt.spec.Concurrency > 0 {
 			cm.Utilization = rt.BusySumMS / (float64(rt.spec.Concurrency) * durationMS)
 		}
-		if rt.spec.CapacityRPS > 0 && cm.ArrivalRPS > rt.spec.CapacityRPS {
-			cm.Saturated = true
+		if rt.spec.CapacityRPS > 0 {
+			cm.CapacityRPS = rt.spec.CapacityRPS
+			if cm.ArrivalRPS > rt.spec.CapacityRPS {
+				cm.Saturated = true
+			}
 		}
+		if rt.Completed > 0 {
+			cm.AvgServiceMS = rt.BusySumMS / float64(rt.Completed)
+		}
+		cm.QueueTrend = k.queueTrend(id)
 		m.Components = append(m.Components, cm)
 	}
 	return m
+}
+
+// queueTrend classifies a component's occupancy trajectory from sampled
+// windows: compare the mean of the last third of samples against the
+// first third. Requires at least 6 samples of that component.
+func (k *Kernel) queueTrend(id string) string {
+	idx := -1
+	for i, sid := range k.sampledIDs {
+		if sid == id {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return "unknown"
+	}
+	n := len(k.sampledIDs)
+	var series []float64
+	for i := idx; i < len(k.windows); i += n {
+		series = append(series, float64(k.windows[i].occupancy))
+	}
+	if len(series) < 6 {
+		return "unknown"
+	}
+	third := len(series) / 3
+	var first, last float64
+	for i := 0; i < third; i++ {
+		first += series[i]
+	}
+	for i := len(series) - third; i < len(series); i++ {
+		last += series[i]
+	}
+	first /= float64(third)
+	last /= float64(third)
+	switch {
+	case last > first+2 && last > 1.5*first:
+		return "growing"
+	case first > 2 && last < first/1.5:
+		return "draining"
+	default:
+		return "stable"
+	}
 }
 
 // nearestRank returns the nearest-rank percentile of a sorted slice.

@@ -286,4 +286,159 @@ go run .                 # demo: plan + metrics + determinism check
 
 ### Next Step
 
-Step 3 — Metrics, Bottleneck Diagnosis, and Failure Injection
+Step 3 — Metrics, Bottleneck Diagnosis, and Failure Injection ✅ (see below)
+
+---
+
+## Step 3 — Failure Simulation, Advanced Metrics, and Bottleneck Diagnosis
+Status: COMPLETE
+
+### What Was Built
+
+Three extensions to the `sim` package, still stdlib-only and
+provider-free. All behavior emerges from component interactions on the
+Step 1 engine — nothing about cascades is hardcoded.
+
+**Failure injection** (`failure.go`) — four types, each defined by
+`Target`, `StartMS`, `DurationMS`, and a `FailureConfig`:
+
+| Type | Effect while active |
+|---|---|
+| `crash` | component cannot serve: requests fail at it, or forward untouched when `PassThrough` is set (cache → origin fallback) |
+| `increased_latency` | fixed service-time penalty per request served |
+| `increased_error_rate` | a fraction of serviced requests fail |
+| `network_failure` | transit latency inflation plus packet loss (drops) |
+
+Failures are scheduled as engine events (`failure.start` / `failure.stop`);
+recovery is just the stop event clearing the failure state. Invalid specs
+(unknown target, zero duration, out-of-range rates) are rejected before
+the run starts.
+
+**Timeouts and retries** (kernel) — the propagation enablers:
+
+- `RetryPolicy{MaxRetries, BackoffBaseMS, TimeoutMS}` applied by the
+  components listed in `Options.RetryOn`.
+- The **caller** performs the retry (request carries `Prev`), matching
+  real client behavior; backoff doubles per attempt with jittered
+  exponential draws from a dedicated seeded RNG stream.
+- `TimeoutMS` is an end-to-end budget checked at every hop exit; exceeded
+  requests fail as timeouts and burn a retry if the caller can retry.
+- Retries re-enter the failing component, so a slow dependency receives
+  amplified traffic — retry amplification is observable in the metrics.
+
+**Advanced metrics** (all from real simulation data, definitions on the
+structs):
+
+- System: Generated, Completed, Rejected, Failed, Timeouts, Dropped,
+  InFlight, ErrorRate, TimeoutRate, Avg/P50/P95/P99/Max latency
+  (nearest-rank over terminal outcomes — completions plus mid-path
+  failures at their failure latency, so timeouts count as experienced
+  latency rather than vanishing from the sample), and per-request
+  `FailureRecord`s (kind, attempt, caller, detected-at, path, timestamp).
+- Per component: Arrived, Completed, Rejected, Failed, QueueDepth,
+  MaxQueueDepth, InFlight, Utilization, AvgQueueWaitMS, AvgServiceMS
+  (measured, not spec), ThroughputRPS, ArrivalRPS, CapacityRPS,
+  Saturated, and **QueueTrend** ("growing"/"draining"/"stable") computed
+  from periodic occupancy sampling of the run's own windows.
+
+**Bottleneck diagnosis** (`diagnose.go`) — `Diagnose(metrics)` and
+`DiagnoseWithBaseline(metrics, baseline)` flag components using only
+simulation-derived signals:
+
+- critical: rejections, saturation (arrival RPS > capacity), growing
+  queue with arrival rate above service rate, utilization ≥ 97%
+- high: utilization ≥ 90%, queueing dominating service time, failures at
+  the component
+- moderate: utilization ≥ 75%
+
+Every bottleneck carries machine-computed reasons with the actual numbers,
+plus system impacts (load shedding, error/timeout rates, tail ratio,
+baseline deltas such as "p95 latency increased 271% (8.7ms → 32.4ms)").
+Output is deterministically ordered: severity, then arrival rate, then ID.
+
+### Example Scenario (emergent cascade)
+
+`go run .` — 1M users / 500k DAU / 40 req/user/day / 5× peak ≈ 1157 RPS
+against Client → API → Cache(80% hit) → DB(4 slots, 5ms, capacity 500).
+Run 1 is healthy. Run 2 crashes the cache (pass-through) from t=20s to
+t=35s with the same seed:
+
+```text
+RUN 1 (healthy):  db arrivals 24,953  util 52%  p95 8.7ms   no rejections
+diagnosis: no bottlenecks detected
+
+RUN 2 (cache crash 20s→35s):
+  db arrivals 36,181 (+45%: cache hits became DB traffic)
+  db rejections 5,361 (queue limit 20 exceeded under the surge)
+  p95 32.4ms (+271%), p99 32.9ms (10.6x p50)
+
+diagnosis: Bottleneck: db (critical)
+Why:
+  - rejected 5361 of 36181 arrivals (14.8%) — admission capacity exhausted
+  - incoming load 603.0 RPS exceeds modeled capacity 500.0 RPS
+Impact:
+  - load shedding active: 5361 requests rejected
+  - heavy tail: p99 32.9ms is 10.6x p50
+  - p95 latency increased 271% vs baseline (8.7ms → 32.4ms)
+  - throughput decreased 8% vs baseline
+```
+
+Cache failure → more DB requests → DB saturation → queue growth →
+latency rise → load shedding: every step is measured component behavior,
+not scripted logic.
+
+### How to Run
+
+```bash
+cd apps/simulator
+
+go test ./... -count=1   # 67 tests (engine 19, workload 8, sim 40)
+go run .                 # scenario: healthy baseline vs cache-crash cascade
+```
+
+### Tests
+
+67 total, all passing, all deterministic (fixed seeds; controlled
+comparisons reuse the same seed so baseline vs failed runs see identical
+arrivals):
+
+- Step 3 `sim` tests (14 new, `failure_test.go`):
+  - failure spec validation (6 rejection cases)
+  - crash with pass-through: DB absorbs the cache's traffic share
+  - crash without pass-through: requests fail, traffic completes after recovery
+  - latency failure: p50/p99 rise by ~the injected penalty (same-seed control)
+  - error-rate injection: DB-attributed failure share ≈ configured rate
+  - network failure: packet-loss drops observed as terminal failures
+  - **cascading overload**: DB latency beyond the caller's timeout budget
+    produces timeouts attributed to the true caller chain
+    (`caller=cache, detected=db`), retries consume attempts, and the DB
+    sees more arrivals than there are distinct failing requests
+    (amplification)
+  - recovery: failures confined to the injection window
+  - percentile math: nearest-rank exact values on a known series
+  - percentile ordering from real run data
+  - bottleneck detection under overload (db, critical, with reasons)
+  - diagnosis stays silent on a healthy system
+  - baseline deltas reported (p95 increase / throughput decrease)
+  - failure-run determinism (metrics + failure records)
+
+`go vet` and `gofmt` clean.
+
+### Current Limitations
+
+- Latency percentiles include mid-path failures but there is no
+  per-hop latency attribution yet (which component added what).
+- Utilization/queue trends come from periodic sampling (1s windows), not
+  continuous traces; percentile distributions of queue depth are not kept.
+- Crash affects the whole component; no partial degradation, no
+  degradation of hit ratio, no slow-drain models.
+- Retries are per-request FIFO; no circuit breakers, no retry budgets,
+  no hedging; retry amplification exists but is not yet throttled.
+- Queue depth at the horizon can hide an unbounded-growth trend in short
+  runs; trend detection needs ≥ 6 samples per component.
+- No cost engine, no architecture comparison UI, no frontend, no
+  provider-specific behavior — still deliberately out of scope.
+
+### Next Step
+
+Step 4 — Cost Engine and Architecture Comparison
