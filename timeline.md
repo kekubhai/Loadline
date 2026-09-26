@@ -136,4 +136,154 @@ The demo prints both traces and ends with
 
 ### Next Step
 
-Step 2 — Components and Workload Modeling
+Step 2 — Components and Workload Modeling ✅ (see below)
+
+---
+
+## Step 2 — Components and Workload Modeling
+Status: COMPLETE
+
+### What Was Built
+
+A generic component/workload simulation layer on top of the Step 1 engine
+(two new packages, still Go-stdlib-only, still provider-free):
+
+**`workload` package** — turns human-scale assumptions into a derived load
+plan as a pure, inspectable function:
+
+```text
+Users → DAU → Requests/day → Average RPS → Peak RPS
+```
+
+Every intermediate value is kept on the `Plan` struct (DAU fraction,
+read/write split, mean inter-arrival time). Invalid specs (DAU > users,
+peak < 1x, etc.) are rejected with explanatory errors — no hidden jumps,
+no invented numbers.
+
+**`sim` package** — the component and request-flow layer:
+
+- `ComponentSpec` — per-node assumptions: per-op service times,
+  concurrency slots, queue limit, capacity RPS, cache hit ratio.
+- `Kernel` — implements the request lifecycle on the engine: dispatch
+  (admit / queue / reject), queueing with FIFO order, service with
+  concurrency slots, completion hop, and routing by link conditions
+  (read/write/all). Cache reads short-circuit on hits; misses and writes
+  continue downstream.
+- Rejection policy: when all concurrency slots are busy AND the queue is
+  at its limit, the request is refused at the door (it never occupies
+  service time).
+- `Metrics` — see below.
+- `Simulate(arch, workload, options)` — validates, derives, runs, and
+  reports; identical inputs + seed give byte-identical metrics.
+
+### Components Supported
+
+All nine generic kinds, each with capacity (concurrency + queue limit),
+service time per op, queueing, arrivals, completions, and rejections:
+
+| Kind | Role in a request flow |
+|---|---|
+| `client` | generates traffic, receives responses |
+| `load_balancer` | routes with configurable concurrency + queue |
+| `api_server` | computes; forwards reads/writes downstream |
+| `cache` | serves reads on hit (HitRatio), forwards misses + writes |
+| `queue` | unbounded buffer; must link to exactly one worker |
+| `worker` | async compute; drains a queue; terminal |
+| `database` | priced reads/writes; typical bottleneck |
+| `object_storage` | priced get/put |
+| `network` | pure latency transit hop |
+
+Architecture validation rules: exactly one client, no unknown link IDs,
+no self-links, no dependency cycles, all nodes reachable from the client,
+queues link to exactly one worker, workers link only from queues.
+
+### Workload Model
+
+`workload.Spec` → `workload.Plan`:
+
+```text
+TotalUsers, DAU, RequestsPerUserPerDay, PeakMultiplier,
+ReadWriteRatio, PayloadBytes
+   ↓ Derive()
+RequestsPerDay = DAU × RequestsPerUserPerDay
+AverageRPS     = RequestsPerDay ÷ 86400
+PeakRPS        = AverageRPS × PeakMultiplier
+ReadFraction   = ratio ÷ (ratio + 1)
+MeanInterArrivalMillis = 1000 ÷ PeakRPS
+```
+
+Arrivals are a deterministic Poisson process: exponential gaps drawn from
+the seeded per-event RNG streams, labeled read/write by the split ratio.
+
+### Metrics
+
+Per component (all definitions documented on the struct):
+Arrived, Completed, Rejected, QueueDepth (instantaneous), MaxQueueDepth
+(high-water), InFlight, Utilization (busy-ms ÷ concurrency × window),
+AvgQueueWaitMS, ArrivalRPS, Saturated flag (ArrivalRPS > CapacityRPS).
+
+System-wide: Generated, Completed, Rejected, InFlight (conservation:
+Generated = Completed + Rejected + InFlight), Avg/P50/P95/P99/Max latency
+over completed requests (nearest-rank percentiles), window duration.
+
+### Example Architecture
+
+The demo (`apps/simulator/main.go`) runs Client → API Server → Cache →
+Database with the 1M-user / 100k-DAU / 20-req-per-user / 5x-peak workload,
+one simulated minute, seed 42. Sample output:
+
+```text
+users 1000000 → DAU 100000 (10.0%) → 2000000 req/day → avg 23.1 RPS → peak 115.7 RPS (x5.0)
+window 60s: generated 6837, completed 6836, rejected 0, in-flight 1
+latency ms: avg 4.95  p50 3.10  p95 8.10  p99 8.10  max 9.77
+api    arrived 6837  completed 6836  util 3.4%
+cache  arrived 6836  completed 6836  util 0.6%
+db     arrived 2535  completed 2535  util 5.3%   ← cache filters ~63% of traffic
+```
+
+### How to Run
+
+```bash
+cd apps/simulator
+
+go test ./... -count=1   # all 40 tests (engine 19, workload 8, sim 13)
+go run .                 # demo: plan + metrics + determinism check
+```
+
+### Tests
+
+40 tests total, all passing, all deterministic (fixed seeds):
+
+- engine (19) — unchanged from Step 1, still green.
+- workload (8) — derivation chain values, 1-RPS anchor point, seven
+  invalid-spec rejections, read/write split ratio over 100k draws,
+  arrival-gap mean matches the plan, ID uniqueness.
+- sim (13) — architecture validation (single client, unknown links,
+  cycles, queue/worker pairing, worker terminals), request conservation,
+  rejection under overload, zero rejections under light load, DB traffic
+  drops with an 80%-hit cache, percentile ordering, queue→worker handoff
+  equality, saturation flag, same-seed determinism.
+
+`go vet` and `gofmt` clean.
+
+### Current Limitations
+
+- Latency percentiles are computed over completed requests only; no
+  per-component latency attribution yet (which hop added what).
+- Utilization is a window average, not a time series; no per-percentile
+  queue-depth distribution.
+- Cache hits are probabilistic per request; no key-space, TTL, or
+  eviction modeling.
+- No retries or timeouts yet, so failure cascades (Step 3+) cannot be
+  expressed.
+- Queue concurrency is a single FIFO line; no priority classes.
+- Links are topological only — no bandwidth/egress pricing or payload
+  transfer time on links yet.
+- No fan-out replica copies for load balancers (FanOut field exists but
+  routes to a single target), no multi-AZ or availability modeling.
+- No cost engine, provider catalog, frontend, failure injection, or
+  comparison UI — deliberately out of scope for this step.
+
+### Next Step
+
+Step 3 — Metrics, Bottleneck Diagnosis, and Failure Injection
