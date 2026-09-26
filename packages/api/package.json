@@ -1,0 +1,21 @@
+{
+  "name": "@loadline/api",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "generate": "buf generate",
+    "typecheck": "tsc --noEmit"
+  },
+  "type": "module",
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.6.1",
+    "@connectrpc/connect": "^2.0.2",
+    "@connectrpc/connect-web": "^2.0.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

@@ -1,0 +1,20 @@
+version: v2
+# Go code lives inside the simulator module so the API layer ships with it.
+# TypeScript code is generated into packages/api for the Next.js frontend.
+plugins:
+  - local: protoc-gen-go
+    out: apps/simulator
+    opt: paths=source_relative
+  - local: protoc-gen-go-grpc
+    out: apps/simulator
+    opt: paths=source_relative,require_unimplemented_servers=false
+  - local: protoc-gen-connect-go
+    out: apps/simulator
+    opt: paths=source_relative
+  # protoc-gen-es is a Node script (no native binary); invoking it through
+  # node keeps generation working identically on Windows and Unix.
+  - local: ["node", "node_modules/@bufbuild/protoc-gen-es/bin/protoc-gen-es"]
+    out: packages/api/src
+    opt: target=ts
+inputs:
+  - directory: proto

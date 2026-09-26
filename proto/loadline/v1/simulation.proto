@@ -1,0 +1,529 @@
+syntax = "proto3";
+
+package loadline.v1;
+
+option go_package = "github.com/kekubhai/Loadline/apps/simulator/loadline/v1;loadlinev1";
+
+// ---------------------------------------------------------------------------
+// Architecture
+// ---------------------------------------------------------------------------
+
+// ComponentKind is the generic component class. The simulator only knows
+// these kinds; provider services map onto them in the catalog layer.
+enum ComponentKind {
+  COMPONENT_KIND_UNSPECIFIED = 0;
+  COMPONENT_KIND_CLIENT = 1;
+  COMPONENT_KIND_LOAD_BALANCER = 2;
+  COMPONENT_KIND_API_SERVER = 3;
+  COMPONENT_KIND_CACHE = 4;
+  COMPONENT_KIND_QUEUE = 5;
+  COMPONENT_KIND_WORKER = 6;
+  COMPONENT_KIND_DATABASE = 7;
+  COMPONENT_KIND_OBJECT_STORAGE = 8;
+  COMPONENT_KIND_NETWORK = 9;
+}
+
+// ComponentSpec is one node in the architecture. Every field is a
+// user-inspectable modeling assumption; the simulation turns them into
+// behavior. Zero-valued optional fields fall back to catalog defaults
+// when the component is provider-backed.
+message ComponentSpec {
+  string id = 1;
+  ComponentKind kind = 2;
+  // Per-op service times in milliseconds, keyed by op class:
+  // "read", "write", "compute", "get", "put", "enqueue", "transit".
+  map<string, double> service_time_millis = 3;
+  double default_service_time_millis = 4;
+  // Parallel requests served; 0 = unconstrained (pure latency hop).
+  int32 concurrency = 5;
+  // Buffered requests before admission rejection; 0 = unbounded.
+  int32 queue_limit = 6;
+  // Modeled maximum sustainable throughput; > 0 enables saturation flags.
+  double capacity_rps = 7;
+  // Cache hit ratio in [0,1]; ignored by non-cache kinds.
+  double hit_ratio = 8;
+  // Fan-out replication (load balancers / networks); 1 = plain routing.
+  int32 fan_out = 9;
+  // Provider catalog reference, e.g. provider "aws", service "lambda".
+  // When set, catalog defaults fill the unspecified capacity/latency
+  // fields and the component becomes cost-priced.
+  string provider = 10;
+  string service = 11;
+  // Provider config overrides (all optional; zero = catalog default).
+  ProviderConfig config = 12;
+}
+
+// ProviderConfig is the typed configuration for a catalog service.
+message ProviderConfig {
+  int32 concurrency = 1;
+  int32 queue_limit = 2;
+  int32 units = 3;
+  // Memory sizing for per-compute-unit services (bigger → faster model).
+  int32 memory_mb = 4;
+  double storage_gb = 5;
+  // Cache hit ratio override (applies to caches/CDNs).
+  double hit_ratio = 6;
+}
+
+// Link wires two components: requests flow from → to.
+message Link {
+  string from = 1;
+  string to = 2;
+  // "" = all requests, "read" or "write" restricts traversal.
+  string condition = 3;
+}
+
+// Architecture is the serializable simulation input, versioned from day
+// one so future migrations are possible.
+message Architecture {
+  string schema_version = 1;
+  string name = 2;
+  repeated ComponentSpec components = 3;
+  repeated Link links = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Workload
+// ---------------------------------------------------------------------------
+
+// WorkloadSpec is the human-scale load definition. The derivation chain
+// Users → DAU → requests/day → avg RPS → peak RPS is a pure function of
+// these fields and every intermediate is reported back in LoadPlan.
+message WorkloadSpec {
+  int64 total_users = 1;
+  int64 dau = 2;
+  double requests_per_user_per_day = 3;
+  double peak_multiplier = 4;
+  // Reads per write, e.g. 4 = 80% read / 20% write. Must be > 0.
+  double read_write_ratio = 5;
+  int64 payload_bytes = 6;
+}
+
+// LoadPlan is the derived, inspectable load plan (workload.Derive output).
+message LoadPlan {
+  int64 total_users = 1;
+  int64 dau = 2;
+  double dau_fraction = 3;
+  double requests_per_user_per_day = 4;
+  double requests_per_day = 5;
+  double average_rps = 6;
+  double peak_multiplier = 7;
+  double peak_rps = 8;
+  double read_fraction = 9;
+  double write_fraction = 10;
+  int64 payload_bytes = 11;
+  double mean_inter_arrival_millis = 12;
+}
+
+// ---------------------------------------------------------------------------
+// Failures
+// ---------------------------------------------------------------------------
+
+// FailureType enumerates the V1 failure injections.
+enum FailureType {
+  FAILURE_TYPE_UNSPECIFIED = 0;
+  FAILURE_TYPE_CRASH = 1;
+  FAILURE_TYPE_INCREASED_LATENCY = 2;
+  FAILURE_TYPE_INCREASED_ERROR_RATE = 3;
+  FAILURE_TYPE_NETWORK_FAILURE = 4;
+}
+
+// FailureConfig carries the parameters of one injection; only the fields
+// relevant to the failure's type are consumed.
+message FailureConfig {
+  // AddedLatencyMillis (latency, network failures): service-time penalty.
+  double added_latency_millis = 1;
+  // ErrorRate (error-rate failure): fraction [0,1] of serviced requests.
+  double error_rate = 2;
+  // PacketLossRate (network failure): fraction [0,1] dropped on arrival.
+  double packet_loss_rate = 3;
+  // PassThrough (crash): forward requests downstream instead of failing
+  // them (e.g. cache → origin fallback).
+  bool pass_through = 4;
+}
+
+// Failure is one injection: what, where, when, and how.
+message Failure {
+  string target = 1;
+  FailureType type = 2;
+  // Simulated instant the failure begins (>= 0).
+  double start_ms = 3;
+  // How long it lasts (> 0).
+  double duration_ms = 4;
+  FailureConfig config = 5;
+}
+
+// ---------------------------------------------------------------------------
+// Simulation run
+// ---------------------------------------------------------------------------
+
+// SimulationOptions configures one run. Seed is mandatory in spirit:
+// unseeded runs are defaulted (never silently random) and the effective
+// seed is echoed back so any run can be reproduced.
+message SimulationOptions {
+  // Drives all randomness; 0 defaults to 1 and is echoed in RunResponse.
+  uint64 seed = 1;
+  // Simulated horizon in milliseconds; 0 defaults to 60000.
+  double duration_ms = 2;
+  repeated Failure failures = 3;
+  // Retry/timeout behavior.
+  int32 max_retries = 4;
+  double backoff_base_ms = 5;
+  double timeout_ms = 6;
+  // Component IDs allowed to retry failed requests they forwarded.
+  repeated string retry_on = 7;
+}
+
+// Simulation is a stored run: its inputs and (once finished) its outputs.
+message Simulation {
+  string id = 1;
+  Architecture architecture = 2;
+  WorkloadSpec workload = 3;
+  SimulationOptions options = 4;
+}
+
+// CreateSimulationRequest registers a simulation without running it.
+message CreateSimulationRequest {
+  Architecture architecture = 1;
+  WorkloadSpec workload = 2;
+  SimulationOptions options = 3;
+}
+
+message CreateSimulationResponse {
+  Simulation simulation = 1;
+}
+
+// RunSimulationRequest starts asynchronous execution of a stored
+// simulation. Progress can then be watched via StreamMetrics or polled
+// via GetSimulationStatus.
+message RunSimulationRequest {
+  string simulation_id = 1;
+}
+
+message RunSimulationResponse {
+  Simulation simulation = 1;
+}
+
+// RunStatus is the lifecycle state of a run.
+enum RunStatus {
+  RUN_STATUS_UNSPECIFIED = 0;
+  RUN_STATUS_PENDING = 1;   // created, not started
+  RUN_STATUS_RUNNING = 2;   // executing on the simulation engine
+  RUN_STATUS_COMPLETED = 3; // finished; results available
+  RUN_STATUS_FAILED = 4;    // rejected or errored; message explains why
+}
+
+// ProgressSnapshot is a lightweight mid-run sample of system counters and
+// per-component occupancy. These are real values read from the running
+// kernel's state, not interpolations.
+message ProgressSnapshot {
+  double sim_time_ms = 1;
+  uint64 generated = 2;
+  uint64 completed = 3;
+  uint64 rejected = 4;
+  uint64 failed = 5;
+  int64 in_flight = 6;
+  repeated ComponentOccupancy components = 7;
+}
+
+// ComponentOccupancy is one component's instantaneous state.
+message ComponentOccupancy {
+  string component_id = 1;
+  int32 queue_depth = 2;
+  int32 in_flight = 3;
+  uint64 arrived = 4;
+  uint64 completed = 5;
+  double utilization = 6;
+}
+
+// GetSimulationStatusRequest polls one simulation's state.
+message GetSimulationStatusRequest {
+  string simulation_id = 1;
+}
+
+message GetSimulationStatusResponse {
+  string simulation_id = 1;
+  RunStatus status = 2;
+  // Error text when status is FAILED (validation or engine error).
+  string error = 3;
+  // Latest progress snapshot while RUNNING; nil otherwise.
+  ProgressSnapshot progress = 4;
+}
+
+// StreamMetricsRequest subscribes to a run's progress and completion.
+// The stream ends after a terminal status frame is sent.
+message StreamMetricsRequest {
+  string simulation_id = 1;
+}
+
+message StreamMetricsResponse {
+  oneof event {
+    ProgressSnapshot progress = 1;
+    GetSimulationStatusResponse status = 2;
+    FinalResults results = 3;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Metrics and results
+// ---------------------------------------------------------------------------
+
+// ComponentMetrics is the per-component report. Definitions match
+// sim.ComponentMetrics exactly (see the Go docs): Arrived/Completed/
+// Rejected/Failed are cumulative; QueueDepth/InFlight instantaneous;
+// Utilization is busy-ms ÷ (concurrency × window); ThroughputRPS/
+// ArrivalRPS are window averages; QueueTrend is "growing", "draining",
+// "stable", or "unknown".
+message ComponentMetrics {
+  string id = 1;
+  string kind = 2;
+  uint64 arrived = 3;
+  uint64 completed = 4;
+  uint64 rejected = 5;
+  uint64 failed = 6;
+  int32 queue_depth = 7;
+  int32 max_queue_depth = 8;
+  int32 in_flight = 9;
+  double utilization = 10;
+  double avg_queue_wait_ms = 11;
+  double avg_service_ms = 12;
+  double throughput_rps = 13;
+  double arrival_rps = 14;
+  double capacity_rps = 15;
+  string queue_trend = 16;
+  bool saturated = 17;
+}
+
+// FailureRecord summarizes one request-level failure.
+message FailureRecord {
+  uint64 request_id = 1;
+  string component_id = 2;
+  string caller_id = 3;
+  string kind = 4;
+  int32 attempt = 5;
+  double at_ms = 6;
+  double latency_ms = 7;
+  repeated string path = 8;
+}
+
+// SystemMetrics is the system-wide result. Latency percentiles are
+// nearest-rank over terminal outcomes (completions plus mid-path
+// failures), matching sim.Metrics.
+message SystemMetrics {
+  double duration_ms = 1;
+  uint64 generated = 2;
+  uint64 completed = 3;
+  uint64 rejected = 4;
+  uint64 failed = 5;
+  uint64 timeouts = 6;
+  uint64 dropped = 7;
+  uint64 in_flight = 8;
+  double error_rate = 9;
+  double timeout_rate = 10;
+  double avg_latency_ms = 11;
+  double p50_ms = 12;
+  double p95_ms = 13;
+  double p99_ms = 14;
+  double max_latency_ms = 15;
+  repeated ComponentMetrics components = 16;
+}
+
+// RunSummary reports engine-level counters for the run.
+message RunSummary {
+  uint64 events_processed = 1;
+  uint64 events_scheduled = 2;
+  int32 events_pending = 3;
+  string stop_reason = 4;
+}
+
+// GetResultsRequest fetches the final results of a completed run.
+message GetResultsRequest {
+  string simulation_id = 1;
+}
+
+message GetResultsResponse {
+  string simulation_id = 2;
+  LoadPlan plan = 3;
+  SystemMetrics metrics = 4;
+  repeated FailureRecord failures = 5;
+  RunSummary summary = 6;
+}
+
+// FinalResults is the results payload delivered on the metrics stream
+// when the run completes.
+message FinalResults {
+  LoadPlan plan = 1;
+  SystemMetrics metrics = 2;
+  repeated FailureRecord failures = 3;
+  RunSummary summary = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Diagnosis
+// ---------------------------------------------------------------------------
+
+// Bottleneck is one flagged component with machine-computed evidence.
+message Bottleneck {
+  string component_id = 1;
+  string kind = 2;
+  // "critical", "high", or "moderate".
+  string severity = 3;
+  repeated string reasons = 4;
+  repeated string impacts = 5;
+}
+
+// Diagnosis is the automatic bottleneck report.
+message Diagnosis {
+  repeated Bottleneck bottlenecks = 1;
+  repeated string impacts = 2;
+  bool healthy = 3;
+  string summary = 4;
+}
+
+// GetDiagnosisRequest fetches the diagnosis. When baseline_simulation_id
+// is set and refers to a completed run (typically the same architecture
+// without failures), the diagnosis includes baseline deltas such as
+// "p95 latency increased 271% (8.7ms → 32.4ms)".
+message GetDiagnosisRequest {
+  string simulation_id = 1;
+  string baseline_simulation_id = 2;
+}
+
+message GetDiagnosisResponse {
+  string simulation_id = 1;
+  Diagnosis diagnosis = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Capacity
+// ---------------------------------------------------------------------------
+
+// CapacityReport is the per-component capacity estimate. CurrentRPS is
+// measured simulation output; MaxSustainableRPS is the modeled ceiling of
+// the current configuration (concurrency ÷ service time, or the catalog
+// ceiling for serverless kinds); Utilization + Headroom = 1.
+message CapacityReport {
+  string component_id = 1;
+  string provider = 2;
+  string service = 3;
+  double current_rps = 4;
+  double max_sustainable_rps = 5;
+  double utilization = 6;
+  double headroom = 7;
+  bool saturated = 8;
+  bool bottleneck = 9;
+  repeated string assumptions = 10;
+}
+
+// GetCapacityRequest fetches capacity estimates. Empty component_ids
+// means all provider-backed components.
+message GetCapacityRequest {
+  string simulation_id = 1;
+  repeated string component_ids = 2;
+}
+
+message GetCapacityResponse {
+  string simulation_id = 1;
+  repeated CapacityReport reports = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Cost
+// ---------------------------------------------------------------------------
+
+// CostLineItem is one priced element with its derivation.
+message CostLineItem {
+  string component_id = 1;
+  string category = 2;
+  string description = 3;
+  double quantity = 4;
+  string unit = 5;
+  double unit_price = 6;
+  double monthly_cost = 7;
+}
+
+// ComponentCost is one component's monthly estimate.
+message ComponentCost {
+  string component_id = 1;
+  string provider = 2;
+  string service = 3;
+  repeated CostLineItem line_items = 4;
+  double monthly = 5;
+}
+
+// CostEstimate is the full monthly estimate. It is always an ESTIMATE
+// from local pricing models — never live billing data; the assumption
+// trail makes every number auditable.
+message CostEstimate {
+  string currency = 1;
+  double total = 2;
+  map<string, double> by_category = 3;
+  repeated ComponentCost components = 4;
+  repeated string assumptions = 5;
+}
+
+// GetCostEstimateRequest fetches the monthly cost estimate derived from
+// the run's measured usage scaled to a 730h month at observed rates.
+message GetCostEstimateRequest {
+  string simulation_id = 1;
+}
+
+message GetCostEstimateResponse {
+  string simulation_id = 1;
+  CostEstimate estimate = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Provider catalog
+// ---------------------------------------------------------------------------
+
+// CatalogService describes one provider service model.
+message CatalogService {
+  string provider = 1;
+  string service = 2;
+  string summary = 3;
+  string component_kind = 4;
+  int32 concurrency = 5;
+  int32 queue_limit = 6;
+  double modeled_rps = 7;
+  double default_service_time_ms = 8;
+  string scaling_kind = 9;
+  double per_request_price = 10;
+  double per_instance_hour_price = 11;
+}
+
+// ListCatalogRequest returns the full built-in provider catalog.
+message ListCatalogRequest {}
+
+message ListCatalogResponse {
+  repeated CatalogService services = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
+
+// SimulationService is LOADLINE's ConnectRPC API over the Go simulation
+// engine. The engine stays independent: this layer adapts transport
+// messages to sim/packages calls and owns run lifecycle + streaming.
+service SimulationService {
+  // Create a stored simulation (architecture + workload + options).
+  rpc CreateSimulation(CreateSimulationRequest) returns (CreateSimulationResponse);
+  // Start asynchronous execution of a stored simulation.
+  rpc RunSimulation(RunSimulationRequest) returns (RunSimulationResponse);
+  // Poll a simulation's status and latest progress snapshot.
+  rpc GetSimulationStatus(GetSimulationStatusRequest) returns (GetSimulationStatusResponse);
+  // Stream progress snapshots while running, then status and final
+  // results; the stream ends after the terminal frame.
+  rpc StreamMetrics(StreamMetricsRequest) returns (stream StreamMetricsResponse);
+  // Fetch final results of a completed run.
+  rpc GetResults(GetResultsRequest) returns (GetResultsResponse);
+  // Fetch the bottleneck diagnosis (optionally vs a baseline run).
+  rpc GetDiagnosis(GetDiagnosisRequest) returns (GetDiagnosisResponse);
+  // Fetch per-component capacity estimates.
+  rpc GetCapacity(GetCapacityRequest) returns (GetCapacityResponse);
+  // Fetch the monthly cost estimate (ESTIMATE, not live billing).
+  rpc GetCostEstimate(GetCostEstimateRequest) returns (GetCostEstimateResponse);
+  // List the built-in provider catalog.
+  rpc ListCatalog(ListCatalogRequest) returns (ListCatalogResponse);
+}

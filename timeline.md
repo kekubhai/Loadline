@@ -592,4 +592,184 @@ go run .                 # cascade scenario + provider capacity/cost report
 
 ### Next Step
 
-Step 5 — Architecture Comparison and Sharing
+Step 5 — ConnectRPC API + Frontend Wiring ✅ (see below)
+
+---
+
+## Step 5 — Backend API (Protobuf + ConnectRPC) and Frontend Wiring
+Status: COMPLETE
+
+### What Was Built
+
+The completed Go simulation backend is now exposed to the Next.js frontend
+over **Protobuf + ConnectRPC**. The engine stays fully independent: the
+transport layer only adapts messages and orchestrates run lifecycle —
+every metric, diagnosis, capacity number, and cost line still comes from
+the simulation kernel or the provider models.
+
+Dependency direction (enforced by imports):
+
+```text
+Next.js (browser)
+   |  @loadline/api (generated TS stubs + client factory)
+   |  Connect protocol (binary proto over HTTP; gRPC / gRPC-Web also served)
+   v
+apps/simulator/cmd/loadline-server   (thin: routes, CORS, h2c)
+   v
+apps/simulator/loadlinev1            (API layer: store + service + adapters)
+   v
+sim / workload / providers / engine  (UNCHANGED simulation core)
+```
+
+**Protobuf contract** (`proto/loadline/v1/simulation.proto`, package
+`loadline.v1`, versioned `Architecture.schema_version` from day one).
+One `SimulationService` with all nine RPCs:
+
+| RPC | Kind | Purpose |
+|---|---|---|
+| `CreateSimulation` | unary | validate + store architecture/workload/options, assign ID |
+| `RunSimulation` | unary | start async execution on the engine |
+| `GetSimulationStatus` | unary | poll status + latest progress snapshot |
+| `StreamMetrics` | server-stream | live progress frames, then status + final results |
+| `GetResults` | unary | plan, system + per-component metrics, failure records, engine summary |
+| `GetDiagnosis` | unary | bottleneck report, optionally vs a baseline run |
+| `GetCapacity` | unary | per-component capacity estimates (provider-backed runs) |
+| `GetCostEstimate` | unary | monthly ESTIMATE with full assumption trail |
+| `ListCatalog` | unary | the 18-service provider catalog |
+
+Code generation is `buf`-driven (`buf.yaml`, `buf.gen.yaml`):
+`protoc-gen-go` + `protoc-gen-go-grpc` + `protoc-gen-connect-go` produce Go
+stubs in `apps/simulator/loadline/v1` (+ `.../loadlinev1connect`), and
+`protoc-gen-es` produces TypeScript in `packages/api/src`. `buf lint`
+passes under the STANDARD ruleset.
+
+**API layer** (`apps/simulator/loadlinev1/`):
+
+- `store.go` — in-memory run store. A `Run` holds inputs, lifecycle
+  (`PENDING → RUNNING → COMPLETED | FAILED`), the latest progress
+  snapshot, results, and resolved provider specs. Subscribers register a
+  wake channel against a monotonic `version` counter; notifications drain
+  the subscriber set (no double-close) and the version check closes the
+  missed-wakeup window between reading state and subscribing.
+- `convert.go` — the only place proto messages meet domain structs:
+  provider references (`provider`/`service`/`config`) resolve through
+  `providers.ResolveService` so the simulator sees only generic specs;
+  user-specified generic fields win over catalog defaults.
+- `service.go` — the Connect handler. `RunSimulation` executes on a
+  background goroutine with a panic guard; results publish into the
+  store, which wakes stream subscribers. `StreamMetrics` replays the
+  latest snapshot before terminal frames (a run can finish faster than a
+  subscriber attaches — simulations run far faster than wall time).
+
+**Engine-side progress hook** (`sim.Options.Progress`) — the one addition
+to the simulation core. The kernel's existing sampler event emits a
+`Snapshot` (sim time, system counters, per-component queue/in-flight/
+arrived/completed/utilization) through an observational callback. It
+cannot influence scheduling, is ignored when nil, and a dedicated test
+(`TestProgressHookDeterminism`) proves hook-on vs hook-off runs are
+identical. This is how the API streams progress WITHOUT the API layer
+owning simulation state.
+
+**Server** (`apps/simulator/cmd/loadline-server`) — a deliberately thin
+binary: registers the generated handler, wraps rs/cors (origins via
+`LOADLINE_ALLOWED_ORIGINS`, default `http://localhost:3000`), and h2c so
+gRPC works without TLS. Serves Connect + gRPC + gRPC-Web on one port.
+
+**Shared frontend package** (`packages/api`) — workspace package exporting
+the generated protobuf-es types and a `createLoadlineClient({ baseUrl })`
+factory (binary-proto Connect transport over `fetch`).
+
+**Frontend** (`apps/web/app/page.tsx`) — the first real console slice,
+all state, no computation: pick the AWS catalog scenario (Client → Lambda
+→ ElastiCache → RDS), toggle a cache-crash injection (t=1s → 6s,
+pass-through), then create → run → stream live progress → results →
+diagnosis → capacity → cost. The last healthy run is kept as the
+diagnosis baseline for the crash run. Panels render only server-computed
+numbers: latency percentiles, per-component tables, bottlenecks with
+their reasons, capacity ceilings + headroom, and the monthly cost
+estimate with its ESTIMATE marker.
+
+### Example: end-to-end over HTTP (real server, curl)
+
+`go run ./cmd/loadline-server -addr :8090`, then against
+`/loadline.v1.SimulationService/...` with 1M-DAU / 40-req / 5× peak
+(≈2315 RPS peak), 3s window:
+
+```text
+CreateSimulation → {"simulation":{"id":"sim-1", ...}}
+RunSimulation    → RUNNING
+GetResults       → generated 6839, completed 6761, avg 28.0ms, p95 33.5ms, p99 35.9ms
+GetDiagnosis     → healthy (no bottleneck at this load)
+GetCapacity      → db rds: current 808 RPS, max 1600, util 67%, headroom 33%
+                   (assumption trail: "ceiling = concurrency 8 ÷ service 0.005s ≈ 1600 RPS")
+GetCostEstimate  → total $2859.46/month (compute, requests, database, network)
+StreamMetrics    → progress frames ... status COMPLETED ... final results
+```
+
+### How to Run
+
+```bash
+# generate stubs after editing proto (requires buf + plugins on PATH)
+buf generate
+
+terminal 1:
+cd apps/simulator && go run ./cmd/loadline-server -addr :8080
+
+terminal 2:
+cd apps/web && pnpm dev    # open http://localhost:3000
+
+tests:
+cd apps/simulator && go test ./... -count=1      # 86 tests
+cd packages/api && pnpm typecheck                # generated types
+cd apps/web && pnpm typecheck                    # console page
+```
+
+### Tests
+
+86 total (79 from Steps 1–4 unchanged + 7 new), all passing, all
+deterministic. New `loadlinev1` suite runs the REAL service over an
+in-process HTTP server (generated client, real serialization/routing):
+
+- `TestFullLifecycle` — create → run → results → diagnosis → capacity →
+  cost; checks request conservation (Generated = Completed + Rejected +
+  Failed + InFlight), 4 component reports, utilization + headroom = 1,
+  non-empty assumptions, and the not-live-billing marker on cost.
+- `TestStreamMetrics` — stream attaches BEFORE the run starts; asserts ≥1
+  progress frame from real sampling windows, terminal status, and a
+  results frame with completed traffic.
+- `TestDeterminismAcrossAPI` — two identical seeded runs through the full
+  API produce byte-identical generated/completed/p95/p99/avg — the API
+  layer cannot perturb engine determinism.
+- `TestValidationErrors` — unknown provider service, unknown failure
+  target, invalid workload, not-found IDs, and cyclic architectures fail
+  the run with structured errors.
+- `TestFailureInjectionEndToEnd` — heavy workload (~2315 RPS), cache
+  crash 1s→6s with pass-through vs same-seed baseline: db arrivals grow
+  and the diagnosis reports the db as critical with machine-computed
+  reasons (the Step 3 cascade, now through the wire).
+- `TestProgressHookDeterminism` — the progress hook does not perturb
+  simulation results.
+- `TestCatalog` — 18 services, deterministic order, kinds populated.
+
+`go vet` clean, `gofmt` clean, `buf lint` clean, both TS packages
+`--noEmit` clean. End-to-end smoke-tested over real TCP with curl
+(unary RPCs, JSON codec) and a throwaway Connect client (streaming).
+
+### Current Limitations
+
+- The store is in-memory and single-process: run IDs die with the server.
+  Sharing/persisting architectures is future work.
+- Progress snapshots arrive at the sampling cadence (1s simulated); there
+  is no continuous event firehose and no resume of past frames beyond the
+  latest-snapshot replay.
+- Simulation execution is synchronous per run (single goroutine, no
+  cancellation): a run cannot be aborted mid-flight yet.
+- Capacity/cost require provider references on components; generic-only
+  architectures get metrics + diagnosis but no estimates (by design).
+- The web console is a single page with inline tables — the canvas,
+  architecture editing, and comparison UI are still ahead.
+- CORS defaults to localhost:3000; production origins come from env.
+
+### Next Step
+
+Step 6 — Architecture Comparison and Sharing

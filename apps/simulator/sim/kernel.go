@@ -105,6 +105,11 @@ type Options struct {
 	// TrackWindows, when > 0, samples utilization/queue depth every N
 	// simulated milliseconds so diagnosis can detect growing queues.
 	TrackWindows int
+
+	// Progress, when non-nil, is invoked with periodic snapshots of real
+	// run state (same cadence as trend sampling). Purely observational:
+	// it cannot influence the simulation. See ProgressHook.
+	Progress ProgressHook
 }
 
 // ComponentMetrics is a point-in-time report for one component.
@@ -210,6 +215,8 @@ type Kernel struct {
 	arrival  *workload.ArrivalClock
 	failRNG  *engine.RNG // failure/backoff rolls, independent stream
 
+	progress ProgressHook
+
 	retryOn map[string]bool
 
 	latencies []float64
@@ -251,6 +258,7 @@ func newKernel(arch Architecture, plan workload.Plan, opts Options) *Kernel {
 		failRNG:  engine.NewRNG(opts.Seed ^ 0xF41A11),
 		retryOn:  make(map[string]bool, len(opts.RetryOn)),
 		windowMS: float64(opts.TrackWindows),
+		progress: opts.Progress,
 	}
 	for _, id := range opts.RetryOn {
 		k.retryOn[id] = true
@@ -357,6 +365,85 @@ func Simulate(arch Architecture, spec workload.Spec, opts Options) (*RunResult, 
 		Events:  *events,
 		Metrics: k.snapshot(opts.DurationMS),
 	}, nil
+}
+
+// ProgressHook receives periodic mid-run snapshots of real kernel state
+// while the simulation executes. It is called synchronously on the
+// sampler's scheduled events, so it must be fast and must not mutate the
+// kernel. It exists so an API layer can stream progress WITHOUT owning
+// simulation state; the engine and kernel stay transport-agnostic.
+// Snapshot values are the same quantities the sampler records for trend
+// diagnosis: instantaneous queue depth, in-flight slots, cumulative
+// arrivals/completions, and utilization over the elapsed window.
+type ProgressHook func(Snapshot)
+
+// Snapshot is one point-in-time view of the run (all values measured,
+// none derived after the fact).
+type Snapshot struct {
+	// SimTimeMS is the current simulated time.
+	SimTimeMS float64
+	// DurationMS is the configured horizon.
+	DurationMS float64
+	// System counters (cumulative, matching Metrics definitions).
+	Generated uint64
+	Completed uint64
+	Rejected  uint64
+	Failed    uint64
+	// InFlight: Generated − Completed − Rejected − Failed.
+	InFlight int64
+	// Components: one entry per constrained component, in architecture
+	// order (deterministic).
+	Components []ComponentOccupancy
+}
+
+// ComponentOccupancy is one component's instantaneous occupancy.
+type ComponentOccupancy struct {
+	ID          string
+	QueueDepth  int
+	InFlight    int
+	Arrived     uint64
+	Completed   uint64
+	Utilization float64
+}
+
+// emitSnapshot builds the current snapshot for the progress hook.
+func (k *Kernel) emitSnapshot(nowMS float64) {
+	if k.progress == nil {
+		return
+	}
+	snap := Snapshot{
+		SimTimeMS:  nowMS,
+		DurationMS: k.opts.DurationMS,
+		Generated:  k.generated,
+		Completed:  k.completed,
+		Rejected:   k.rejected,
+		Failed:     k.failed,
+		InFlight:   int64(k.generated) - int64(k.completed) - int64(k.rejected) - int64(k.failed),
+		Components: make([]ComponentOccupancy, 0, len(k.sampledIDs)),
+	}
+	for _, id := range k.sampledIDs {
+		rt := k.rt(id)
+		util := 0.0
+		if rt.spec.Concurrency > 0 {
+			util = rt.BusySumMS / (float64(rt.spec.Concurrency) * maxFloat64(nowMS, 1))
+		}
+		snap.Components = append(snap.Components, ComponentOccupancy{
+			ID:          id,
+			QueueDepth:  len(rt.queue),
+			InFlight:    rt.inFlight,
+			Arrived:     rt.Arrived,
+			Completed:   rt.Completed,
+			Utilization: util,
+		})
+	}
+	k.progress(snap)
+}
+
+func maxFloat64(a, b float64) float64 {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // startSampler begins the periodic occupancy sampling used by trend
@@ -691,6 +778,7 @@ func (k *Kernel) sampleWindow(ctx *engine.Context) []engine.Event {
 		})
 	}
 	k.samplerDue = at + k.windowMS
+	k.emitSnapshot(at) // observe-only; cannot affect event scheduling
 	ctx.Schedule(delay(k.windowMS), engine.Event{Type: "metrics.sample", Handler: k.sampleWindow})
 	return nil
 }

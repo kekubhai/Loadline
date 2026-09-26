@@ -9,6 +9,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@connectrpc/connect": "^2.0.2",
+    "@connectrpc/connect-web": "^2.0.2",
+    "@bufbuild/protobuf": "^2.6.1",
+    "@loadline/api": "workspace:*",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
