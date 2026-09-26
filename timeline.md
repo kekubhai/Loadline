@@ -441,4 +441,155 @@ arrivals):
 
 ### Next Step
 
-Step 4 — Cost Engine and Architecture Comparison
+Step 4 — Cost Engine and Architecture Comparison ✅ (see below)
+
+---
+
+## Step 4 — Provider Abstraction, Capacity Estimation, and Cost Engine
+Status: COMPLETE
+
+### What Was Built
+
+A new `providers` package with a strict dependency direction: **providers
+ depend on the generic simulation layer, never the reverse**. The
+simulator operates exclusively on generic `ComponentSpec` behavior and
+has zero knowledge of AWS, Cloudflare, or GCP.
+
+**ServiceModel abstraction** (`provider.go`) — every catalog service
+exposes the six required facets as data + behavior:
+
+```text
+Identity   Provider() / Service() / Summary()
+Capacity   concurrency, service time, queue limit, modeled RPS ceiling, notes
+Latency    per-op service times (read/write/get/put/enqueue/transit/compute)
+Scaling    static | autoscaled | serverless, unit costs
+Failure    MTTR + baseline error posture (input to future injection defaults)
+Pricing    per-request, per-compute-unit, instance-hour, storage/DB/cache
+           GB-month, queue-op, egress-GB, free-tier allowances
+```
+
+All 18 services are instances of one `GenericService` implementation —
+uniform behavior, differing only in documented numbers.
+
+**Config resolution** — typed `Config{Concurrency, QueueLimit, Units,
+MemoryMB, StorageGB, HitRatio}` merges over catalog defaults and emits the
+generic spec plus a complete assumption trail. `BuildSpec` maps
+(provider, service) → generic component kind inside the providers package;
+memory sizing scales modeled service time for per-compute-unit services
+(documented linear assumption, not a benchmark).
+
+### Providers and Services
+
+| Provider | Services (18 total) |
+|---|---|
+| AWS (7) | EC2, Lambda, RDS, ElastiCache, SQS, S3, CloudFront |
+| Cloudflare (5) | Workers, KV, R2, Queues, Durable Objects |
+| GCP (6) | Cloud Run, Cloud SQL, Memorystore, Pub/Sub, Cloud Storage, Cloud CDN |
+
+Nothing connects to real cloud accounts. Every number is a labeled
+modeling assumption (mid-tier plan, primary commercial region).
+
+### Capacity Model
+
+`EstimateCapacity(runResult, specs)` combines three sources — measured
+simulation behavior, service-model assumptions, and the Step 3 diagnosis
+— into per-component reports:
+
+```text
+CurrentRPS         = measured mean arrival rate (simulation output)
+MaxSustainableRPS  = concurrency ÷ effective service time
+                     (catalog ceiling for serverless kinds)
+Utilization        = measured busy fraction
+Headroom           = 1 − utilization
+Saturated          = arrival > ceiling (measured OR modeled)
+Bottleneck         = diagnosis flagged the component
+Assumptions        = full trail: class notes, config, derivation math
+```
+
+Example derivation printed by the demo:
+
+```text
+ceiling = concurrency 8 ÷ service 0.005s ≈ 1600 RPS; arrival is 0% of ceiling
+```
+
+### Pricing Model
+
+`EstimateCost(runResult, specs, plan)` converts measured usage into a
+monthly ESTIMATE, scaling the simulated window to 730h at observed rates
+(the scale factor is printed). Categories: compute (instance-hours +
+GB-seconds), requests, storage, database, cache, queue, network (egress
+from actual payload sizes, 20% egress fraction), total. Free-tier
+allowances are deducted per line with the deduction annotated in the line
+description. Every line item carries quantity × unit-price with its
+derivation string, and the estimate carries the global assumptions:
+
+```text
+NOTE: ESTIMATE from local pricing models — not live billing data.
+```
+
+### Example Architecture (provider-built)
+
+The demo's new section builds Client → Lambda → ElastiCache → RDS from
+the catalog and runs the full pipeline:
+
+```text
+== capacity ==
+db       rds            6.0 RPS   max 1600   util 0.5%   headroom 99.5%
+api      lambda        17.1 RPS   max 4000   util 0.4%   headroom 99.6%
+cache    elasticache   17.1 RPS   max 2.0M   util 0.0%   headroom 100%
+
+== monthly cost ==
+api      lambda        $18.35   (GB-s compute + requests, free tiers applied)
+cache    elasticache  $113.15   (1 instance-hour line)
+db       rds          $187.79   (instance + 100GB storage + egress)
+TOTAL                 $312.42   ESTIMATE — not live billing data
+```
+
+### How to Run
+
+```bash
+cd apps/simulator
+
+go test ./... -count=1   # 79 tests (engine 19, workload 8, sim 40, providers 12)
+go run .                 # cascade scenario + provider capacity/cost report
+```
+
+### Tests
+
+79 total, all passing, all deterministic. Step 4 additions (12 new):
+
+- catalog completeness: all 18 services present, every facet populated
+  and documented
+- kind mapping: all 16 mapped services land on the right generic kind
+- unknown service rejected; config overrides applied; defaults preserved
+- memory sizing: smaller Lambda allocation models slower execution
+- capacity ceiling math: RDS 8 ÷ 5ms = 1600 RPS exact
+- capacity report: measured RPS present, headroom+utilization = 1,
+  assumptions explicit
+- pricing math: hand-computed 100GB × $0.115 database line; category sum
+  equals total; repeat calls identical (determinism)
+- free-tier deduction: sub-1M SQS ops price to $0
+- egress priced from workload payload bytes
+- end-to-end: catalog → generic architecture → simulation → capacity +
+  cost from real outputs
+
+`go vet` and `gofmt` clean.
+
+### Current Limitations
+
+- Pricing is a coarse local model: single region class, no tiers/reserved
+  instances/savings plans, no NAT/load-balancer/CDN forwarding fees.
+- Capacity ceilings are linear (concurrency ÷ service time); no queuing-
+  theory correction at high utilization.
+- Free-tier deduction is linear on the largest matching bucket, not
+  per-account marginal accounting.
+- FailureModel exposes MTTR/error posture but Step 3 injections do not
+  yet default from provider profiles.
+- Autoscaling is described (min/max/unit cost) but the simulator does not
+  model scale-out events mid-run; EC2-style fleets are static per run.
+- Durable Objects duration pricing modeled as GB-s compute only.
+- No architecture comparison yet (next step), no frontend.
+
+### Next Step
+
+Step 5 — Architecture Comparison and Sharing

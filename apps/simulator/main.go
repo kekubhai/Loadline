@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/kekubhai/Loadline/apps/simulator/providers"
 	"github.com/kekubhai/Loadline/apps/simulator/sim"
 	"github.com/kekubhai/Loadline/apps/simulator/workload"
 )
@@ -35,6 +36,7 @@ func main() {
 		ReadWriteRatio:        4, // 80% read / 20% write
 		PayloadBytes:          4096,
 	}
+	_ = spec // (re-derived below per scenario)
 	plan, err := workload.Derive(spec)
 	if err != nil {
 		fmt.Println("workload error:", err)
@@ -102,6 +104,8 @@ func main() {
 	fmt.Println("################ RUN 2 — cache crash 20s→35s ################")
 	printMetrics(crash)
 	printDiagnosis(sim.DiagnoseWithBaseline(crash.Metrics, base.Metrics), "crash vs baseline")
+
+	printProviderScenario()
 }
 
 func printPlan(p workload.Plan) {
@@ -136,6 +140,98 @@ func printMetrics(r *sim.RunResult) {
 	}
 	fmt.Printf("\nevents: processed %d, stop=%s (sim time %s)\n\n",
 		r.Events.Processed, r.Events.StopReason, r.Events.FinalTime)
+}
+
+// printProviderScenario builds the same architecture FROM THE PROVIDER
+// CATALOG (AWS Lambda + ElastiCache + RDS), simulates it, and reports
+// capacity and cost estimates — all derived from real run outputs.
+func printProviderScenario() {
+	fmt.Println("################ PROVIDER SCENARIO — AWS catalog ################")
+
+	cacheRS, err := providers.ResolveService("cache", "aws", "elasticache", providers.Config{HitRatio: 0.8})
+	must(err)
+	apiRS, err := providers.ResolveService("api", "aws", "lambda", providers.Config{MemoryMB: 512})
+	must(err)
+	dbRS, err := providers.ResolveService("db", "aws", "rds", providers.Config{StorageGB: 100})
+	must(err)
+
+	arch := sim.Architecture{
+		Name: "aws-web",
+		Components: []sim.ComponentSpec{
+			{ID: "client", Kind: sim.KindClient},
+			apiRS.Spec, cacheRS.Spec, dbRS.Spec,
+		},
+		Links: []sim.Link{
+			{From: "client", To: "api"},
+			{From: "api", To: "cache"},
+			{From: "cache", To: "db"},
+		},
+	}
+	must(arch.Validate())
+
+	spec := workload.Spec{
+		TotalUsers: 1_000_000, DAU: 50_000, RequestsPerUserPerDay: 10,
+		PeakMultiplier: 3, ReadWriteRatio: 4, PayloadBytes: 4096,
+	}
+	res, err := sim.Simulate(arch, spec, sim.Options{Seed: 7, DurationMS: 30_000})
+	must(err)
+
+	fmt.Printf("architecture: client → %s (%s) → %s (%s) → %s (%s)\n\n",
+		apiRS.Spec.ID, apiRS.Model.Service(),
+		cacheRS.Spec.ID, cacheRS.Model.Service(),
+		dbRS.Spec.ID, dbRS.Model.Service())
+
+	reports := providers.EstimateCapacity(res, []providers.ResolvedSpec{apiRS, cacheRS, dbRS})
+	providers.SortCapacity(reports)
+	fmt.Println("== capacity (ESTIMATE, from simulation outputs) ==")
+	fmt.Printf("%-8s %-12s %10s %12s %8s %9s  %s\n",
+		"ID", "SERVICE", "CURRENT", "MAX SUST.", "UTIL", "HEADROOM", "FLAGS")
+	for _, cr := range reports {
+		flags := ""
+		if cr.Saturated {
+			flags += " SAT"
+		}
+		if cr.Bottleneck {
+			flags += " BN"
+		}
+		fmt.Printf("%-8s %-12s %9.1f %12.1f %7.1f%% %8.1f%%  %s\n",
+			cr.ComponentID, cr.Service, cr.CurrentRPS, cr.MaxSustainableRPS,
+			cr.Utilization*100, cr.Headroom*100, flags)
+	}
+	fmt.Println("assumptions (db):")
+	for _, a := range reports[0].Assumptions {
+		fmt.Println("  - " + a)
+	}
+	fmt.Println()
+
+	est := providers.EstimateCost(res, []providers.ResolvedSpec{apiRS, cacheRS, dbRS}, res.Plan)
+	fmt.Println("== monthly cost ==")
+	fmt.Printf("%-8s %-12s %14s\n", "ID", "SERVICE", "MONTHLY (USD)")
+	for _, cc := range est.Components {
+		fmt.Printf("%-8s %-12s %14.2f\n", cc.ComponentID, cc.Service, cc.Monthly)
+		for _, li := range cc.LineItems {
+			fmt.Printf("    %-9s %-38s %12.2f  [%s]\n",
+				string(li.Category), li.Description, li.MonthlyCost, li.Unit)
+		}
+	}
+	fmt.Println("  by category:")
+	for _, cat := range providers.AllCategories() {
+		fmt.Printf("    %-9s %14.2f\n", string(cat), est.ByCategory[cat])
+	}
+	fmt.Printf("  %-9s %14.2f\n", "TOTAL", est.Total)
+	fmt.Println("  NOTE: ESTIMATE from local pricing models — not live billing data.")
+	fmt.Println("  assumptions:")
+	for _, a := range est.Assumptions {
+		fmt.Println("  - " + a)
+	}
+	fmt.Println()
+}
+
+func must(err error) {
+	if err != nil {
+		fmt.Println("error:", err)
+		os.Exit(1)
+	}
 }
 
 func printDiagnosis(d sim.Diagnosis, label string) {
