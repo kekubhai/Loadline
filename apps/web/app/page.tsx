@@ -7,6 +7,9 @@
  * What this page owns: UI state only. Every number displayed comes from
  * the simulation service (create → run → stream progress → results →
  * diagnosis → capacity → cost). Nothing is computed or faked here.
+ *
+ * Visual language lives in app/globals.css + app/primitives.css and the
+ * primitives in components/ui.tsx. This file composes them.
  */
 import { useMemo, useReducer, useRef, useState } from "react";
 import {
@@ -22,6 +25,22 @@ import type {
   GetCostEstimateResponse,
   ProgressSnapshot,
 } from "@loadline/api";
+import {
+  Badge,
+  Button,
+  Checkbox,
+  Divider,
+  EmptyState,
+  Field,
+  Input,
+  Metric,
+  Panel,
+  Section,
+  StatusIndicator,
+  Toolbar,
+  Tooltip,
+  toneForWord,
+} from "../components/ui";
 
 type Phase = "idle" | "running" | "done" | "error";
 
@@ -133,6 +152,13 @@ const OPTIONS = {
   retryOn: ["api", "cache"],
 };
 
+const STATUS: Record<Phase, { state: "ok" | "warn" | "bad" | "idle"; label: string }> = {
+  idle: { state: "idle", label: "idle" },
+  running: { state: "warn", label: "running" },
+  done: { state: "ok", label: "complete" },
+  error: { state: "bad", label: "error" },
+};
+
 export default function Home() {
   const [serverUrl, setServerUrl] = useState("http://localhost:8080");
   const [injectCrash, setInjectCrash] = useState(false);
@@ -221,198 +247,259 @@ export default function Home() {
     }
   }
 
+  const status = STATUS[state.phase];
+  const m = state.results?.metrics;
+
   return (
-    <main style={{ maxWidth: 960, margin: "0 auto", padding: 24, fontFamily: "ui-monospace, monospace" }}>
-      <h1 style={{ fontSize: 24 }}>LOADLINE</h1>
-      <p style={{ color: "#666" }}>
-        System-design simulation: requirements → architecture → simulation → failure → diagnosis.
-      </p>
+    <main className="console">
+      <header className="masthead">
+        <div className="masthead-title">Loadline</div>
+        <p className="masthead-sub">
+          system-design simulation <em>·</em> requirements → architecture → simulation →
+          failure → diagnosis
+        </p>
+        <div className="masthead-bar">
+          <Toolbar>
+            <Field label="server">
+              <Input value={serverUrl} onChange={setServerUrl} width={220} />
+            </Field>
+            <Checkbox checked={injectCrash} onChange={setInjectCrash}>
+              crash cache (t=1s → 6s)
+            </Checkbox>
+            <Button variant="primary" disabled={state.phase === "running"} onClick={() => void run()}>
+              {state.phase === "running" ? "simulating…" : "run simulation"}
+            </Button>
+          </Toolbar>
+          <StatusIndicator state={status.state} label={status.label} />
+        </div>
+      </header>
 
-      <section style={{ display: "flex", gap: 12, alignItems: "center", margin: "16px 0" }}>
-        <label>
-          server{" "}
-          <input
-            value={serverUrl}
-            onChange={(e) => setServerUrl(e.target.value)}
-            style={{ width: 220, fontFamily: "inherit" }}
-          />
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={injectCrash}
-            onChange={(e) => setInjectCrash(e.target.checked)}
-          />{" "}
-          crash cache (t=1s → 6s)
-        </label>
-        <button
-          onClick={() => void run()}
-          disabled={state.phase === "running"}
-          style={{ padding: "6px 16px" }}
-        >
-          {state.phase === "running" ? "simulating…" : "run simulation"}
-        </button>
-      </section>
+      {state.error && <p className="error-line">error: {state.error}</p>}
 
-      {state.error && <p style={{ color: "#c0392b" }}>error: {state.error}</p>}
-
-      {state.progress && state.phase === "running" && (
-        <section>
-          <h2>live progress (sim time {f0(state.progress.simTimeMs)} ms)</h2>
-          <table cellPadding={4}>
-            <thead>
-              <tr>
-                <th>component</th>
-                <th>queue</th>
-                <th>in-flight</th>
-                <th>arrived</th>
-                <th>completed</th>
-                <th>util</th>
-              </tr>
-            </thead>
-            <tbody>
-              {state.progress.components.map((c) => (
-                <tr key={c.componentId}>
-                  <td>{c.componentId}</td>
-                  <td>{c.queueDepth}</td>
-                  <td>{c.inFlight}</td>
-                  <td>{f0(c.arrived)}</td>
-                  <td>{f0(c.completed)}</td>
-                  <td>{pct(c.utilization)}</td>
+      <div className="console-stack">
+        {/* ------------------------------------------------ live progress */}
+        {state.phase === "running" && state.progress && (
+          <Panel title="Live progress" tag={`sim time ${f0(state.progress.simTimeMs)} ms`}>
+            <table>
+              <thead>
+                <tr>
+                  <th>component</th>
+                  <th>queue</th>
+                  <th>in-flight</th>
+                  <th>arrived</th>
+                  <th>completed</th>
+                  <th>util</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      )}
-
-      {state.results && (
-        <section>
-          <h2>results</h2>
-          <p>
-            generated {f0(state.results.metrics?.generated)} · completed{" "}
-            {f0(state.results.metrics?.completed)} · rejected {f0(state.results.metrics?.rejected)} ·
-            failed {f0(state.results.metrics?.failed)}
-          </p>
-          <p>
-            latency ms: avg {f2(state.results.metrics?.avgLatencyMs)} · p50{" "}
-            {f2(state.results.metrics?.p50Ms)} · p95 {f2(state.results.metrics?.p95Ms)} · p99{" "}
-            {f2(state.results.metrics?.p99Ms)} · max {f2(state.results.metrics?.maxLatencyMs)}
-          </p>
-          <h3>workload plan (derived)</h3>
-          <p>
-            DAU {state.results.plan?.dau?.toString()} of{" "}
-            {state.results.plan?.totalUsers?.toString()} users →{" "}
-            {f0(state.results.plan?.requestsPerDay)} req/day → avg{" "}
-            {f1(state.results.plan?.averageRps)} RPS → peak {f1(state.results.plan?.peakRps)} RPS
-            (×{f1(state.results.plan?.peakMultiplier)})
-          </p>
-          <h3>components</h3>
-          <table cellPadding={4}>
-            <thead>
-              <tr>
-                <th>id</th>
-                <th>kind</th>
-                <th>arrived</th>
-                <th>rejected</th>
-                <th>queue max</th>
-                <th>trend</th>
-                <th>util</th>
-                <th>arrival rps</th>
-              </tr>
-            </thead>
-            <tbody>
-              {state.results.metrics?.components.map((c) => (
-                <tr key={c.id}>
-                  <td>{c.id}</td>
-                  <td>{c.kind}</td>
-                  <td>{f0(c.arrived)}</td>
-                  <td>{f0(c.rejected)}</td>
-                  <td>{c.maxQueueDepth}</td>
-                  <td>{c.queueTrend}</td>
-                  <td>{pct(c.utilization)}</td>
-                  <td>{f1(c.arrivalRps)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      )}
-
-      {state.diagnosis && (
-        <section>
-          <h2>diagnosis</h2>
-          <p>{state.diagnosis.summary}</p>
-          {state.diagnosis.bottlenecks.map((b) => (
-            <div key={b.componentId} style={{ margin: "8px 0", paddingLeft: 12, borderLeft: "3px solid #c0392b" }}>
-              <strong>
-                {b.componentId} ({b.severity})
-              </strong>
-              <ul>
-                {b.reasons.map((r, i) => (
-                  <li key={i}>{r}</li>
+              </thead>
+              <tbody>
+                {state.progress.components.map((c) => (
+                  <tr key={c.componentId}>
+                    <td>{c.componentId}</td>
+                    <td>{c.queueDepth}</td>
+                    <td>{c.inFlight}</td>
+                    <td>{f0(c.arrived)}</td>
+                    <td>{f0(c.completed)}</td>
+                    <td>{pct(c.utilization)}</td>
+                  </tr>
                 ))}
-              </ul>
+              </tbody>
+            </table>
+          </Panel>
+        )}
+
+        {/* ---------------------------------------------------- idle hint */}
+        {state.phase === "idle" && !state.error && (
+          <Panel title="Console">
+            <EmptyState>
+              no run yet — point the server field at the simulation backend and execute.
+            </EmptyState>
+          </Panel>
+        )}
+
+        {/* ------------------------------------------------------ results */}
+        {state.results && m && (
+          <>
+            <Panel title="Results" tag={state.simId ?? undefined}>
+              <div className="metric-row">
+                <Metric label="generated" value={f0(m.generated)} />
+                <Metric label="completed" value={f0(m.completed)} />
+                <Metric label="rejected" value={f0(m.rejected)} />
+                <Metric label="failed" value={f0(m.failed)} />
+                <Metric label="error rate" value={pct(m.errorRate)} />
+                <Metric label="timeout rate" value={pct(m.timeoutRate)} />
+              </div>
+              <Divider />
+              <Section label="latency ms">
+                <div className="metric-row">
+                  <Metric label="avg" value={f2(m.avgLatencyMs)} />
+                  <Metric label="p50" value={f2(m.p50Ms)} />
+                  <Metric
+                    label="p95"
+                    value={f2(m.p95Ms)}
+                  />
+                  <Metric
+                    label={
+                      <Tooltip text="99th percentile, nearest-rank over terminal outcomes (completions and mid-path failures).">
+                        p99
+                      </Tooltip>
+                    }
+                    value={f2(m.p99Ms)}
+                  />
+                  <Metric label="max" value={f2(m.maxLatencyMs)} />
+                </div>
+              </Section>
+            </Panel>
+
+            <Panel title="Workload plan" tag="derived">
+              <p className="prose">
+                DAU {state.results.plan?.dau?.toString()} of{" "}
+                {state.results.plan?.totalUsers?.toString()} users →{" "}
+                {f0(state.results.plan?.requestsPerDay)} req/day → avg{" "}
+                {f1(state.results.plan?.averageRps)} RPS → peak{" "}
+                {f1(state.results.plan?.peakRps)} RPS (×{f1(state.results.plan?.peakMultiplier)})
+              </p>
+              <p className="prose prose-dim">
+                users → DAU → requests/user/day → requests/day → average RPS → peak multiplier
+                → peak RPS
+              </p>
+            </Panel>
+
+            <Panel title="Components">
+              <table>
+                <thead>
+                  <tr>
+                    <th>id</th>
+                    <th>kind</th>
+                    <th>arrived</th>
+                    <th>rejected</th>
+                    <th>queue max</th>
+                    <th>trend</th>
+                    <th>util</th>
+                    <th>arrival rps</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {m.components.map((c) => (
+                    <tr key={c.id}>
+                      <td>{c.id}</td>
+                      <td>{c.kind}</td>
+                      <td>{f0(c.arrived)}</td>
+                      <td>{f0(c.rejected)}</td>
+                      <td>{c.maxQueueDepth}</td>
+                      <td>
+                        <Badge tone={toneForWord(c.queueTrend)}>{c.queueTrend}</Badge>
+                      </td>
+                      <td>{pct(c.utilization)}</td>
+                      <td>{f1(c.arrivalRps)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Panel>
+          </>
+        )}
+
+        {/* ---------------------------------------------------- diagnosis */}
+        {state.diagnosis && (
+          <Panel title="Diagnosis">
+            <p className="prose">{state.diagnosis.summary}</p>
+            {state.diagnosis.bottlenecks.length === 0 ? (
+              <EmptyState>no bottlenecks detected</EmptyState>
+            ) : (
+              state.diagnosis.bottlenecks.map((b) => (
+                <div key={b.componentId} className={`diag diag-${b.severity}`}>
+                  <div className="diag-head">
+                    <span className="diag-id">{b.componentId}</span>
+                    <Badge tone={toneForWord(b.severity)}>{b.severity}</Badge>
+                  </div>
+                  <ul className="reasons">
+                    {b.reasons.map((r, i) => (
+                      <li key={i}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))
+            )}
+            {state.diagnosis.impacts.length > 0 && (
+              <>
+                <Section label="impact" />
+                <ul className="impacts">
+                  {state.diagnosis.impacts.map((i, k) => (
+                    <li key={k}>{i}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </Panel>
+        )}
+
+        {/* ----------------------------------------------------- capacity */}
+        {state.capacity && (
+          <Panel title="Capacity" tag="estimates from simulation outputs">
+            <table>
+              <thead>
+                <tr>
+                  <th>component</th>
+                  <th>service</th>
+                  <th>current rps</th>
+                  <th>max sustainable</th>
+                  <th>
+                    <Tooltip text="headroom = 1 − utilization">headroom</Tooltip>
+                  </th>
+                  <th>flags</th>
+                </tr>
+              </thead>
+              <tbody>
+                {state.capacity.reports.map((r) => (
+                  <tr key={r.componentId}>
+                    <td>{r.componentId}</td>
+                    <td>{r.service}</td>
+                    <td>{f1(r.currentRps)}</td>
+                    <td>{f0(r.maxSustainableRps)}</td>
+                    <td>{pct(r.headroom)}</td>
+                    <td>
+                      {r.saturated && <Badge tone="bad">sat</Badge>}{" "}
+                      {r.bottleneck && <Badge tone="warn">bn</Badge>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Panel>
+        )}
+
+        {/* --------------------------------------------------------- cost */}
+        {state.cost && state.cost.estimate && (
+          <Panel title="Monthly cost" tag="estimate — not live billing data">
+            <div className="metric-row">
+              <Metric
+                label="total"
+                value={`$${f2(state.cost.estimate.total)}`}
+                unit="/mo"
+                note={state.cost.estimate.currency}
+              />
             </div>
-          ))}
-          {state.diagnosis.impacts.length > 0 && (
-            <ul style={{ color: "#666" }}>
-              {state.diagnosis.impacts.map((i, k) => (
-                <li key={k}>{i}</li>
+            <Divider />
+            <div className="kv">
+              {Object.entries(state.cost.estimate.byCategory ?? {}).map(([cat, amt]) => (
+                <span key={cat} className="kv-item">
+                  <span className="kv-key">{cat}</span>
+                  <span className="kv-val">${f2(amt)}</span>
+                </span>
               ))}
-            </ul>
-          )}
-        </section>
-      )}
+            </div>
+          </Panel>
+        )}
 
-      {state.capacity && (
-        <section>
-          <h2>capacity (estimates from simulation outputs)</h2>
-          <table cellPadding={4}>
-            <thead>
-              <tr>
-                <th>component</th>
-                <th>service</th>
-                <th>current rps</th>
-                <th>max sustainable</th>
-                <th>headroom</th>
-                <th>flags</th>
-              </tr>
-            </thead>
-            <tbody>
-              {state.capacity.reports.map((r) => (
-                <tr key={r.componentId}>
-                  <td>{r.componentId}</td>
-                  <td>{r.service}</td>
-                  <td>{f1(r.currentRps)}</td>
-                  <td>{f0(r.maxSustainableRps)}</td>
-                  <td>{pct(r.headroom)}</td>
-                  <td>{[r.saturated && "SAT", r.bottleneck && "BN"].filter(Boolean).join(" ")}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      )}
-
-      {state.cost && (
-        <section>
-          <h2>monthly cost (ESTIMATE — not live billing data)</h2>
-          <p>
-            total ${f2(state.cost.estimate?.total)} per month ({state.cost.estimate?.currency})
-          </p>
-          <table cellPadding={4}>
-            <tbody>
-              {Object.entries(state.cost.estimate?.byCategory ?? {}).map(([cat, amt]) => (
-                <tr key={cat}>
-                  <td>{cat}</td>
-                  <td>${f2(amt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      )}
+        {/* ------------------------------------------------- cost absent */}
+        {state.results && !state.cost && !state.capacity && (
+          <Panel title="Capacity / cost">
+            <EmptyState>
+              no provider-backed estimates — components need provider + service references.
+            </EmptyState>
+          </Panel>
+        )}
+      </div>
     </main>
   );
 }

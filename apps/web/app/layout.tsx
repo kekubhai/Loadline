@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import "./globals.css";
+import "./primitives.css";
 
 export const metadata: Metadata = {
-  title: "Loadline",
-  description: "Loadline"
+  title: "LOADLINE",
+  description:
+    "System-design simulation: requirements → architecture → simulation → failure → diagnosis.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {

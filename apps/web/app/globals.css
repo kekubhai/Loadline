@@ -1,0 +1,143 @@
+/* ==========================================================================
+   LOADLINE — design tokens and base styles.
+   One visual language: warm paper, near-black ink, muted rules.
+   Monospace for data, serif for the masthead. No decoration.
+   ========================================================================== */
+
+:root {
+  /* Surfaces */
+  --paper: #f4f1ea;
+  --panel: #faf8f3;
+  --panel-2: #eeebe2;
+
+  /* Ink */
+  --ink: #1c1a17;
+  --ink-soft: #57524a;
+  --ink-faint: #8c857a;
+  --ink-ghost: #b8b2a6;
+
+  /* Rules and structure */
+  --line: #d8d3c7;
+  --line-strong: #a9a294;
+  --accent: #1c1a17;
+  --accent-soft: #6b6459;
+
+  /* Status — saturated enough to read, muted enough to stay quiet */
+  --ok: #2e6b46;
+  --warn: #8a6d1f;
+  --bad: #a83232;
+
+  /* Tints for status surfaces */
+  --ok-bg: #e7eee5;
+  --warn-bg: #f2ecda;
+  --bad-bg: #f1e1dd;
+
+  /* Typography */
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Menlo,
+    Consolas, "Liberation Mono", monospace;
+  --serif: Charter, "Bitstream Charter", "Iowan Old Style", Georgia, serif;
+
+  /* Structure */
+  --radius: 3px;
+  --shadow: none;
+}
+
+/* --------------------------------------------------------------------------
+   Base
+   -------------------------------------------------------------------------- */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 600;
+}
+
+a {
+  color: inherit;
+}
+
+/* Focus: 1px ink ring, visible and square-ish — an instrument, not a toy. */
+:focus-visible {
+  outline: 1px solid var(--ink);
+  outline-offset: 1px;
+}
+
+::selection {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+/* Scrollbars kept narrow and neutral. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+/* --------------------------------------------------------------------------
+   Tables — the primary data surface.
+   -------------------------------------------------------------------------- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+th,
+td {
+  padding: 4px 8px;
+  text-align: right;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+th:first-child,
+td:first-child {
+  text-align: left;
+  padding-left: 10px;
+}
+
+th:last-child,
+td:last-child {
+  padding-right: 10px;
+}
+
+thead th {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  border-bottom: 1px solid var(--line-strong);
+  background: var(--panel-2);
+}
+
+tbody tr:hover {
+  background: var(--panel-2);
+}
+
+/* Numeric emphasis: ink, not weight tricks. */
+td.num {
+  color: var(--ink);
+}
