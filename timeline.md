@@ -889,4 +889,147 @@ cd apps/web && pnpm typecheck && pnpm build   # both clean
 
 ### Next Step
 
-Step 7 — Architecture Comparison and Sharing
+Step 7 — Operational Test-Bench Controls ✅ (see below)
+
+---
+
+## Step 7 — Operational Test-Bench Controls
+Status: COMPLETE
+
+### What Was Built
+
+The frontend is now a test bench: a run can be watched while it executes,
+frozen mid-flight, aborted early, or re-timed — with every displayed
+number still coming from the engine. Plus the status-lifecycle race that
+the work exposed in the backend was fixed.
+
+**Backend — run control (proto + engine + API):**
+
+- `RunStatus` grew `PAUSED`, `STOPPING`, `STOPPED`; four new RPCs:
+  `PauseSimulation`, `ResumeSimulation`, `StopSimulation`,
+  `SetWallDuration`; `RunSimulationRequest.wall_duration_ms` starts a run
+  paced; `StreamMetrics` gained a `control` frame (status transitions
+  with the sim time they took effect at); `ProgressSnapshot` now carries
+  `wall_elapsed_ms`, `events_processed`, `events_pending`. `buf lint`
+  clean under STANDARD rules; Go + TS stubs regenerated.
+- Engine (`engine/runner.go`): tick pacing (one event per wall-tick
+  interval), `Pause`/`Resume`/`Stop`, and a `finished` flag so control
+  calls on a completed runner are rejected rather than mis-read.
+  Pacing changes only wall duration — results are byte-identical at any
+  tick (enforced by tests at both the engine and API level).
+- Pacing semantics: `wallDurationMs` is the wall time the FULL horizon
+  would take; the engine budgets 2 events/sim-ms to derive a per-event
+  tick. The budget over-estimates real event counts, so actual wall time
+  is shorter than nominal — runs finish early, which is honest (pacing
+  is display comfort, never a timing promise).
+- API layer: control RPCs guard on the run's current status — pause
+  requires RUNNING, resume requires PAUSED, stop requires RUNNING or
+  PAUSED; terminal runs get `FailedPrecondition` instead of being
+  silently re-labeled. This fixed a real race: a pause landing just
+  after completion used to overwrite COMPLETED → PAUSED, and a stale
+  resume then permanently clobbered the status to RUNNING (the sim time
+  froze at the last sample while the status showed a live run).
+  `StopSimulation` publishes partial results under STOPPED with the
+  measured window = the span actually simulated (rates stay honest).
+- New tests: 4 engine (`TestPauseBlocksUntilResume`,
+  `TestStopEndsWithStoppedReason`, `TestStopWhilePaused`,
+  `TestTickPacingPreservesResults`) + 4 API
+  (`TestPauseResumeLifecycle`, `TestStopPublishesPartialResults`,
+  `TestDeterminismIndependentOfPacing`,
+  `TestControlPreconditions`). 94 Go tests total, all passing.
+
+**Frontend — the console (`components/simconsole.tsx`):**
+
+- One component owns a run end to end: create → stream → run (paced) →
+  terminal, dispatching `pause` / `resume` / `stop` / `setWallDuration`
+  against the live simulation id.
+- Run-state banner: IDLE/RUNNING/PAUSED/STOPPING/STOPPED/FAILED/COMPLETE
+  with sim time, wall time, and engine event counters. Status follows the
+  stream's control and status frames, not optimistic local guessing.
+- RUN / PAUSE / RESUME / STOP / RESET buttons. RESET abandons the run
+  object and starts fresh (backend runs are immutable once finished).
+- Speed buttons 1× / 5× / 10× / 50×: base pace 10s-of-wall-per-horizon
+  divided by the multiplier, pushed live via `SetWallDuration`; available
+  after the first progress sample (before that, a run may already be
+  done and the backend rejects pacing a finished run).
+- Live metrics, all sampled from the running kernel: completed-request
+  sparkline over the sample history, per-component queue-depth bars,
+  occupancy table (arrived / completed / queue / in-flight / util).
+  No local math: the sparkline plots reported cumulative counts; the
+  banner re-displays engine counters.
+- End-of-run results panel plus the derived workload plan with its full
+  derivation chain (users → dau → req/day → avg RPS → peak RPS →
+  read/write split, mean inter-arrival), stopped runs explicitly marked
+  as a partial view with their measured span.
+
+**Workload panel (`components/workloadpanel.tsx`)** — the derivation
+chain is now a first-class UI object: inputs on the left, the chain with
+per-step operators on the right. The intermediate values (req/day, avg
+RPS, peak RPS) come from the last run's `FinalResults.plan` — before the
+first run they display "—": the editor refuses to guess what the
+simulator derives.
+
+**Failure injection panel (`components/failurepanel.tsx`)** — pick any
+non-client component from one dropdown, schedule any of the four V1
+injection types (crash / increased latency / increased error rate /
+network failure) with type-specific parameters, remove scheduled
+entries. The shared `FailureEditor` was extracted to
+`components/inspector-forms.tsx` (with the numeric-input primitives) so
+the inspector's per-component editor and this panel are the same code.
+
+**Page wiring** — the simulation view is now console + workload + failure
+panels + the analysis tables (results, components, diagnosis, capacity,
+cost) fed by the page-level outcome handler, which fetches diagnosis (vs
+the last healthy baseline when the run had failures), capacity, and cost
+after each terminal state. The nav run button became "new run" (jump to
+the console pre-cleared); `PageRunState` tracks active/outcome for the
+ops strip.
+
+### How to Run
+
+```bash
+terminal 1:
+cd apps/simulator && go run ./cmd/loadline-server -addr :8080
+
+terminal 2:
+cd apps/web && pnpm dev    # open http://localhost:3000 → simulation view
+
+# pause/resume/stop/speed are live once the first progress sample lands;
+# changing speed mid-run never changes the results — only their wall time.
+
+cd apps/simulator && go test ./... -count=1     # 94 tests
+cd apps/web && pnpm typecheck && pnpm build     # both clean
+```
+
+### Design Notes
+
+- Pacing never leaks into results: `TestDeterminismIndependentOfPacing`
+  asserts fast vs 6s-paced runs produce byte-identical metrics through
+  the full API. The frontend exposes speed as pure display comfort.
+- Streams drive state: the banner follows `control` frames (status +
+  sim time) and `status` frames; the UI never assumes a control RPC
+  succeeded — it reacts to the transition frame. Pause is only offered
+  once a sample exists (a paused-but-already-finished run is a backend
+  `FailedPrecondition`, by design).
+- protobuf-es v2 message literals moved to `create(Schema, …)` across
+  the web app (the regenerated stubs carry `$typeName`), and
+  `packages/api` re-exports `create` so the browser never imports the
+  raw protobuf runtime directly.
+- Failure injections configured in either panel land in the same
+  canonical editor failure list and apply to the next run.
+
+### Current Limitations
+
+- A run's speed baseline is fixed at 10s per horizon; per-run pacing
+  preference is not yet persisted in editor state.
+- The sparkline shows the cumulative completed count (slope = measured
+  throughput); per-window throughput and latency time series will come
+  with richer progress frames.
+- RESET does not cancel an in-flight stream server-side; the console
+  just stops listening (a replaced run's frames are ignored by run-id).
+- Diagnosis baseline selection is implicit (last healthy run); no UI to
+  pick the baseline explicitly yet.
+
+### Next Step
+
+Step 8 — Architecture Comparison and Sharing

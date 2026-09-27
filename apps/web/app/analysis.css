@@ -1,0 +1,312 @@
+/* ==========================================================================
+   LOADLINE — post-run analysis surfaces.
+   Dense big-number typography, hairline meters, verdict rows.
+   Color carries meaning only: backend-assigned severity, nothing else.
+   ========================================================================== */
+
+/* Headline cell — the big-number primitive. */
+.headline {
+  min-width: 96px;
+}
+
+.headline-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.headline-value {
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.headline-unit {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink-faint);
+}
+
+.headline-note {
+  font-size: 10px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.headline-bad .headline-value {
+  color: var(--bad);
+}
+
+.headline-warn .headline-value {
+  color: var(--warn);
+}
+
+.headline-ok .headline-value {
+  color: var(--ok);
+}
+
+/* ------------------------------------------------------------------------ */
+/* Bottleneck — the most prominent post-run surface.                         */
+/* ------------------------------------------------------------------------ */
+
+.bottleneck {
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--line-strong);
+  background: var(--panel);
+  padding: 8px 12px 10px;
+}
+
+.bottleneck-bad {
+  border-left-color: var(--bad);
+  background: var(--bad-bg);
+}
+
+.bottleneck-warn {
+  border-left-color: var(--warn);
+  background: var(--warn-bg);
+}
+
+.bottleneck-tag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--bad);
+  margin-bottom: 2px;
+}
+
+.bottleneck-warn .bottleneck-tag {
+  color: var(--warn);
+}
+
+.bottleneck-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.bottleneck-name {
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.bottleneck-kind {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+}
+
+.bottleneck-meta {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+  margin: 2px 0 8px;
+}
+
+.bottleneck-cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 18px;
+}
+
+@media (max-width: 860px) {
+  .bottleneck-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.bn-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 2px;
+}
+
+.bn-list {
+  margin: 0;
+  padding-left: 14px;
+  font-size: 11px;
+  color: var(--ink);
+}
+
+.bn-list li {
+  margin: 1px 0;
+}
+
+.bn-impacts {
+  color: var(--ink-soft);
+}
+
+/* Healthy run: one quiet line, no box. */
+.diag-clear {
+  font-size: 12px;
+  color: var(--ink-soft);
+  padding: 4px 0;
+}
+
+.diag-clear-mark {
+  color: var(--ok);
+  font-weight: 700;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Capacity — per-component headline triples + thin utilization meter.       */
+/* ------------------------------------------------------------------------ */
+
+.cap-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.cap-row {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.cap-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.cap-id {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.cap-svc {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cap-heads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  margin-bottom: 6px;
+}
+
+.meter {
+  position: relative;
+  height: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+
+.meter-fill {
+  height: 100%;
+  background: var(--ink-ghost);
+}
+
+.meter-warn {
+  background: var(--warn);
+}
+
+.meter-bad {
+  background: var(--bad);
+}
+
+.meter-cap {
+  position: absolute;
+  right: 3px;
+  top: -1px;
+  font-size: 8px;
+  line-height: 1.2;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+/* ------------------------------------------------------------------------ */
+/* Cost — total headline, category table, assumptions.                       */
+/* ------------------------------------------------------------------------ */
+
+.cost-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.reasons-dim {
+  color: var(--ink-soft);
+  font-size: 10px;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Architecture status — verdict rows, not a score.                          */
+/* ------------------------------------------------------------------------ */
+
+.health {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.health-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  border-bottom: 1px dotted var(--line);
+  font-size: 12px;
+}
+
+.health-row:last-child {
+  border-bottom: none;
+}
+
+.health-mark {
+  width: 12px;
+  flex: none;
+  font-weight: 700;
+  text-align: center;
+}
+
+.health-ok {
+  color: var(--ok);
+}
+
+.health-warn {
+  color: var(--warn);
+}
+
+.health-bad {
+  color: var(--bad);
+}
+
+.health-label {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.health-detail {
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

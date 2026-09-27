@@ -818,3 +818,293 @@
     position: static;
   }
 }
+
+/* ------------------------------------------------------------------------ */
+/* Simulation console — run controls, state banner, live metrics.           */
+/* ------------------------------------------------------------------------ */
+
+.sim-console {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+/* State banner: the run's operational state at a glance. */
+.sim-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.sim-banner-warn {
+  border-left-color: var(--warn);
+  background: var(--warn-bg);
+}
+
+.sim-banner-ok {
+  border-left-color: var(--ok);
+  background: var(--ok-bg);
+}
+
+.sim-banner-bad {
+  border-left-color: var(--bad);
+  background: var(--bad-bg);
+}
+
+.sim-banner-time,
+.sim-banner-metric {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.sim-banner-spacer {
+  flex: 1;
+}
+
+.sim-banner-id {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+}
+
+/* Control groups: run/pause/stop/reset + speed buttons. */
+.sim-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.ctl-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ctl-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-right: 4px;
+}
+
+.pace-btn {
+  appearance: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.pace-btn:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--accent-soft);
+}
+
+.pace-btn.active {
+  color: var(--paper);
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.pace-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.sim-controls-note {
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+
+.sim-error {
+  margin: 0;
+  font-size: 11px;
+  color: var(--bad);
+}
+
+.sim-console-main {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 900px) {
+  .sim-console-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Sparkline — sampled values exactly as reported by the engine. */
+.spark {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--panel-2);
+  padding: 2px;
+}
+
+.spark-line {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.2;
+}
+
+.spark-cap {
+  position: absolute;
+  right: 4px;
+  bottom: 2px;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 0 4px;
+}
+
+.spark-empty {
+  font-size: 10px;
+  color: var(--ink-faint);
+  padding: 12px 8px;
+  text-align: center;
+}
+
+/* Live queue depth bars — raw depth values, no scaling. */
+.qbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 1px 0;
+}
+
+.qbar-id {
+  width: 90px;
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.qbar-track {
+  flex: 1;
+  height: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.qbar-fill {
+  height: 100%;
+  background: var(--ink-ghost);
+  min-width: 1px;
+}
+
+.qbar-fill.hot {
+  background: var(--warn);
+}
+
+.qbar-val {
+  width: 48px;
+  flex: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Workload panel — derivation chain. */
+.wl-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+@media (min-width: 1100px) {
+  .wl-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.wl-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.row-hint {
+  font-size: 10px;
+  color: var(--ink-faint);
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
+.src-chain {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.src-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px dotted var(--line);
+  padding: 2px 0;
+}
+
+.src-k {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.src-v {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.src-arrow {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--ink-faint);
+  padding-left: 10px;
+}
+
+/* Failure panel (simulation view). */
+.fail-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fail-summary {
+  display: flex;
+  flex-direction: column;
+}

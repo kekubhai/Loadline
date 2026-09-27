@@ -5,9 +5,11 @@
  */
 import { createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
+import { create as createMessage } from "@bufbuild/protobuf";
 import { SimulationService } from "./loadline/v1/simulation_pb";
 
 export * from "./loadline/v1/simulation_pb";
+export { createMessage as create };
 
 export interface LoadlineClientOptions {
   /** Base URL of the Go Connect server, e.g. http://localhost:8080 */

@@ -261,30 +261,33 @@ export function SimConsole({
         let gotResults: FinalResults | null = null;
         for await (const ev of stream) {
           if (!isCurrent()) return;
-          switch (ev.event.case) {
-            case "progress":
-              if (ev.event.value) {
-                setLive(ev.event.value);
-                setHistory((h) => [...h.slice(-119), ev.event.value!]);
+          const event = ev.event;
+          switch (event.case) {
+            case "progress": {
+              const snap = event.value;
+              if (snap) {
+                setLive(snap);
+                setHistory((h) => [...h.slice(-119), snap]);
               }
               break;
+            }
             case "control": {
-              const ctl: ControlFrame | undefined = ev.event.value;
+              const ctl: ControlFrame | undefined = event.value;
               if (ctl) applyStatus(ctl.status);
               break;
             }
             case "status":
-              if (ev.event.value) {
-                applyStatus(ev.event.value.status);
-                if (ev.event.value.status === RunStatus.FAILED) {
-                  throw new Error(ev.event.value.error || "simulation failed");
+              if (event.value) {
+                applyStatus(event.value.status);
+                if (event.value.status === RunStatus.FAILED) {
+                  throw new Error(event.value.error || "simulation failed");
                 }
               }
               break;
             case "results":
-              if (ev.event.value) {
-                gotResults = ev.event.value;
-                setResults(ev.event.value);
+              if (event.value) {
+                gotResults = event.value;
+                setResults(event.value);
               }
               break;
           }

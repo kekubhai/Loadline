@@ -484,7 +484,6 @@ export function ArchitectureCanvas({
                 <path
                   className="canvas-edge-hit"
                   d={d}
-                  title="click to edit · delete in the inspector"
                   onPointerEnter={() => setHoverEdge(i)}
                   onPointerLeave={() =>
                     setHoverEdge((h) => (h === i ? null : h))

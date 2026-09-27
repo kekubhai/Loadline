@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 import "./primitives.css";
 import "./shell.css";
+import "./analysis.css";
 
 export const metadata: Metadata = {
   title: "LOADLINE",

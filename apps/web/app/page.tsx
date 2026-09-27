@@ -23,7 +23,17 @@ import {
 } from "react";
 import {
   ComponentKind,
+  create,
   createLoadlineClient,
+} from "@loadline/api";
+import {
+  ArchitectureSchema,
+  ComponentSpecSchema,
+  FinalResultsSchema,
+  LinkSchema,
+  ProviderConfigSchema,
+  SimulationOptionsSchema,
+  WorkloadSpecSchema,
 } from "@loadline/api";
 import type {
   Architecture,
@@ -49,6 +59,12 @@ import { SimConsole } from "../components/simconsole";
 import type { SimOutcome } from "../components/simconsole";
 import { WorkloadPanel } from "../components/workloadpanel";
 import { FailurePanel } from "../components/failurepanel";
+import {
+  BottleneckPanel,
+  CapacityPanel,
+  CostPanel,
+  HealthPanel,
+} from "../components/analysis";
 import { f0, f1, f2, pct } from "../components/format";
 import {
   Badge,
@@ -125,12 +141,12 @@ function editorReducer(s: EditorState, a: EditAction): EditorState {
 
     case "addComponent": {
       const id = freshId(s.architecture.components, a.service.toLowerCase());
-      const comp: ComponentSpec = {
+      const comp = create(ComponentSpecSchema, {
         id,
         kind: a.kind,
         provider: a.provider,
         service: a.service,
-      };
+      });
       return {
         ...s,
         architecture: {
@@ -144,7 +160,7 @@ function editorReducer(s: EditorState, a: EditAction): EditorState {
 
     case "addClient": {
       const id = freshId(s.architecture.components, "client");
-      const comp: ComponentSpec = { id, kind: ComponentKind.CLIENT };
+      const comp = create(ComponentSpecSchema, { id, kind: ComponentKind.CLIENT });
       return {
         ...s,
         architecture: {
@@ -158,7 +174,7 @@ function editorReducer(s: EditorState, a: EditAction): EditorState {
     case "patchComponent": {
       const components = s.architecture.components.map((c) => {
         if (c.id !== a.id) return c;
-        const next: ComponentSpec = { ...c };
+        const next = create(ComponentSpecSchema, c);
         const p = a.patch;
         if (p.provider !== undefined) next.provider = p.provider;
         if (p.service !== undefined) next.service = p.service;
@@ -173,7 +189,7 @@ function editorReducer(s: EditorState, a: EditAction): EditorState {
           if (p.config === null) {
             next.config = undefined;
           } else {
-            const merged: ProviderConfig = { ...c.config };
+            const merged = create(ProviderConfigSchema, c.config);
             const partial = p.config;
             if (partial.concurrency !== undefined)
               merged.concurrency = partial.concurrency;
@@ -206,10 +222,12 @@ function editorReducer(s: EditorState, a: EditAction): EditorState {
       const components = s.architecture.components.map((c) =>
         c.id === a.from ? { ...c, id: to } : c,
       );
-      const links = s.architecture.links.map((l) => ({
-        from: l.from === a.from ? to : l.from,
-        to: l.to === a.from ? to : l.to,
-      }));
+      const links = s.architecture.links.map((l) =>
+        create(LinkSchema, {
+          from: l.from === a.from ? to : l.from,
+          to: l.to === a.from ? to : l.to,
+        }),
+      );
       const failures = s.failures.map((f) =>
         f.target === a.from ? { ...f, target: to } : f,
       );
@@ -257,7 +275,10 @@ function editorReducer(s: EditorState, a: EditAction): EditorState {
         ...s,
         architecture: {
           ...s.architecture,
-          links: [...s.architecture.links, { from: a.from, to: a.to }],
+          links: [
+            ...s.architecture.links,
+            create(LinkSchema, { from: a.from, to: a.to }),
+          ],
         },
         selected: `link:${s.architecture.links.length}`,
       };
@@ -298,7 +319,7 @@ function editorReducer(s: EditorState, a: EditAction): EditorState {
 // The demonstration architecture, built on the AWS catalog: Client → Lambda
 // → ElastiCache → RDS. The crash toggle reuses the same seed for a
 // controlled baseline-vs-cascade comparison.
-const INITIAL_ARCHITECTURE: Architecture = {
+const INITIAL_ARCHITECTURE: Architecture = create(ArchitectureSchema, {
   schemaVersion: SCHEMA_VERSION,
   name: "aws-web",
   components: [
@@ -326,29 +347,29 @@ const INITIAL_ARCHITECTURE: Architecture = {
     },
   ],
   links: [
-    { from: "client", to: "api" },
-    { from: "api", to: "cache" },
-    { from: "cache", to: "db" },
+    create(LinkSchema, { from: "client", to: "api" }),
+    create(LinkSchema, { from: "api", to: "cache" }),
+    create(LinkSchema, { from: "cache", to: "db" }),
   ],
-};
+});
 
-const INITIAL_WORKLOAD: WorkloadSpec = {
+const INITIAL_WORKLOAD: WorkloadSpec = create(WorkloadSpecSchema, {
   totalUsers: 10_000_000n,
   dau: 1_000_000n,
   requestsPerUserPerDay: 40,
   peakMultiplier: 5,
   readWriteRatio: 4,
   payloadBytes: 4096n,
-};
+});
 
-const INITIAL_OPTIONS: SimulationOptions = {
+const INITIAL_OPTIONS: SimulationOptions = create(SimulationOptionsSchema, {
   seed: 7n,
   durationMs: 10_000,
   maxRetries: 2,
   backoffBaseMs: 5,
   timeoutMs: 50,
   retryOn: ["api", "cache"],
-};
+});
 
 /* --------------------------------------------------------- run reducer -- */
 
@@ -654,12 +675,12 @@ export default function Home() {
           const res = await client.getResults({ simulationId: id });
           runDispatch({
             type: "results",
-            results: {
+            results: create(FinalResultsSchema, {
               plan: res.plan,
               metrics: res.metrics,
               failures: res.failures,
               summary: res.summary,
-            },
+            }),
           });
           const diag = await client.getDiagnosis({
             simulationId: id,
@@ -1000,97 +1021,37 @@ export default function Home() {
                 </table>
               </Panel>
 
-              <Panel title="Diagnosis">
-                <p className="prose">{state.diagnosis?.summary ?? ""}</p>
-                {state.diagnosis && state.diagnosis.bottlenecks.length === 0 && (
-                  <EmptyState>no bottlenecks detected</EmptyState>
-                )}
-                {state.diagnosis?.bottlenecks.map((b) => (
-                  <div key={b.componentId} className={`diag diag-${b.severity}`}>
-                    <div className="diag-head">
-                      <span className="diag-id">{b.componentId}</span>
-                      <Badge tone={toneForWord(b.severity)}>{b.severity}</Badge>
-                    </div>
-                    <ul className="reasons">
-                      {b.reasons.map((r, i) => (
-                        <li key={i}>{r}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-                {state.diagnosis && state.diagnosis.impacts.length > 0 && (
-                  <>
-                    <Section label="impact" />
-                    <ul className="impacts">
-                      {state.diagnosis.impacts.map((i, k) => (
-                        <li key={k}>{i}</li>
-                      ))}
-                    </ul>
-                  </>
-                )}
+              <Panel
+                title="Bottleneck"
+                tag="most severe first · simulator-computed"
+              >
+                <BottleneckPanel diagnosis={state.diagnosis} metrics={m} />
               </Panel>
 
-              <Panel title="Capacity" tag="estimates from simulation outputs">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>component</th>
-                      <th>service</th>
-                      <th>current rps</th>
-                      <th>max sustainable</th>
-                      <th>headroom</th>
-                      <th>flags</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(state.capacity?.reports ?? []).map((r) => (
-                      <tr key={r.componentId}>
-                        <td>{r.componentId}</td>
-                        <td>{r.service}</td>
-                        <td>{f1(r.currentRps)}</td>
-                        <td>{f0(r.maxSustainableRps)}</td>
-                        <td>{pct(r.headroom)}</td>
-                        <td>
-                          {r.saturated && <Badge tone="bad">sat</Badge>}{" "}
-                          {r.bottleneck && <Badge tone="warn">bn</Badge>}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <Panel title="Architecture status">
+                <HealthPanel
+                  diagnosis={state.diagnosis}
+                  reports={state.capacity?.reports ?? []}
+                  metrics={m}
+                  timeoutMs={editor.options.timeoutMs}
+                  failureTargets={
+                    editor.failures.length > 0
+                      ? [...new Set(editor.failures.map((f) => f.target))]
+                      : []
+                  }
+                />
               </Panel>
 
-              <Panel title="Monthly cost" tag="estimate — not live billing data">
-                {state.cost?.estimate ? (
-                  <>
-                    <div className="metric-row">
-                      <Metric
-                        label="total"
-                        value={`$${f2(state.cost.estimate.total)}`}
-                        unit="/mo"
-                        note={state.cost.estimate.currency}
-                      />
-                    </div>
-                    <Divider />
-                    <div className="kv">
-                      {Object.entries(state.cost.estimate.byCategory ?? {}).map(
-                        ([cat, amt]) => (
-                          <span key={cat} className="kv-item">
-                            <span className="kv-key">{cat}</span>
-                            <span className="kv-val">${f2(amt)}</span>
-                          </span>
-                        ),
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <EmptyState>
-                    no provider-backed estimates — components need provider + service references.
-                  </EmptyState>
-                )}
+              <Panel title="Capacity" tag="from simulation outputs + provider models">
+                <CapacityPanel reports={state.capacity?.reports ?? []} />
+              </Panel>
+
+              <Panel title="Cost">
+                <CostPanel estimate={state.cost?.estimate ?? null} />
               </Panel>
             </>
           )}
+          </div>
         </div>
       )}
 

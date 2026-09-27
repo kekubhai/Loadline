@@ -9,7 +9,8 @@
  */
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { FailureType } from "@loadline/api";
+import { create } from "@loadline/api";
+import { FailureConfigSchema, FailureSchema, FailureType } from "@loadline/api";
 import type { Failure } from "@loadline/api";
 import { Button, Divider, EmptyState, Section, Select } from "./ui";
 import { f0 } from "./format";
@@ -263,18 +264,20 @@ export function FailureEditor({
         )}
         <Button
           onClick={() =>
-            onAdd({
-              target,
-              type,
-              startMs,
-              durationMs,
-              config: {
-                addedLatencyMillis: addedLatencyMs,
-                errorRate,
-                packetLossRate,
-                passThrough,
-              },
-            })
+            onAdd(
+              create(FailureSchema, {
+                target,
+                type,
+                startMs,
+                durationMs,
+                config: create(FailureConfigSchema, {
+                  addedLatencyMillis: addedLatencyMs,
+                  errorRate,
+                  packetLossRate,
+                  passThrough,
+                }),
+              }),
+            )
           }
         >
           schedule
