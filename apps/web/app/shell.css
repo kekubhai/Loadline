@@ -1,0 +1,552 @@
+/* ==========================================================================
+   LOADLINE — application shell.
+   Top nav / left palette / canvas / right inspector / bottom ops strip.
+   Grid-first, hairline rules, no decoration. An instrument, not a page.
+   ========================================================================== */
+
+/* The shell fills the viewport; panels scroll independently. */
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Top navigation — one dense bar: identity · views · run control.          */
+/* ------------------------------------------------------------------------ */
+
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 12px;
+  height: 40px;
+  flex: none;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--ink);
+}
+
+.topnav-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.brand-mark {
+  font-family: var(--serif);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.brand-note {
+  font-size: 10px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topnav-views {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.topnav-view {
+  appearance: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 9px 10px 7px;
+  cursor: pointer;
+}
+
+.topnav-view:hover {
+  color: var(--ink);
+}
+
+.topnav-view.active {
+  color: var(--ink);
+  font-weight: 600;
+  border-bottom-color: var(--ink);
+}
+
+.topnav-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Workbench: left rail · canvas · right rail.                              */
+/* ------------------------------------------------------------------------ */
+
+.workbench {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) 300px;
+  flex: 1;
+  min-height: 0;
+}
+
+.left-rail,
+.right-rail {
+  background: var(--panel);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.left-rail {
+  border-right: 1px solid var(--line);
+}
+
+.right-rail {
+  border-left: 1px solid var(--line);
+}
+
+.rail-head,
+.center-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-2);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.center-tag {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.center {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.center .error-line {
+  margin: 6px 10px;
+}
+
+.center .error-line:first-letter {
+  font-weight: 700;
+}
+
+/* Inspector content below the sticky rail head. */
+.right-rail .inspector-body,
+.right-rail > .empty {
+  padding: 8px 10px;
+}
+
+.right-rail table {
+  font-size: 11px;
+}
+
+.right-rail th,
+.right-rail td {
+  padding: 3px 6px;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Palette — compact catalog + component lists.                             */
+/* ------------------------------------------------------------------------ */
+
+.palette {
+  padding-bottom: 16px;
+}
+
+.pal-head {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  padding: 10px 10px 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.pal-sub {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  padding: 6px 10px 1px;
+}
+
+.pal-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pal-row:hover {
+  background: var(--panel-2);
+}
+
+.pal-row.selected {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.pal-row.selected .pal-right {
+  color: var(--paper);
+  opacity: 0.7;
+}
+
+.pal-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pal-right {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.pal-note {
+  font-size: 11px;
+  color: var(--ink-faint);
+  padding: 6px 10px;
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Canvas — dotted grid, hairline edges, ink-selected nodes.                */
+/* ------------------------------------------------------------------------ */
+
+.canvas-viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  cursor: grab;
+  background-image: radial-gradient(var(--line) 1px, transparent 1px);
+  user-select: none;
+  touch-action: none;
+}
+
+.canvas-viewport.panning {
+  cursor: grabbing;
+}
+
+.canvas-world {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+
+.canvas-edges {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.canvas-edge {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1.2;
+}
+
+.canvas-edge-marker {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1.2;
+}
+
+.canvas-edge-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  fill: var(--ink-faint);
+}
+
+.canvas-node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding: 0 10px;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.canvas-node:hover {
+  border-color: var(--accent-soft);
+  background: var(--panel-2);
+}
+
+.canvas-node.selected {
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+  background: var(--panel);
+}
+
+.canvas-node-id {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.canvas-node-sub {
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.canvas-controls {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  display: flex;
+  gap: 1px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.canvas-controls button {
+  appearance: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink);
+  background: none;
+  border: none;
+  border-right: 1px solid var(--line);
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.canvas-controls button:last-child {
+  border-right: none;
+}
+
+.canvas-controls button:hover {
+  background: var(--panel-2);
+}
+
+.canvas-hint {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  color: var(--ink-ghost);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Simulation view (secondary view in the same shell).                      */
+/* ------------------------------------------------------------------------ */
+
+.sim-view {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 16px 24px;
+}
+
+.sim-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.sim-toolbar-note {
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+
+.sim-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+@media (min-width: 900px) {
+  .sim-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sim-columns > .panel:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ------------------------------------------------------------------------ */
+/* Ops strip — the bottom operational row.                                  */
+/* ------------------------------------------------------------------------ */
+
+.ops-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  padding: 0 10px;
+  flex: none;
+  background: var(--panel-2);
+  border-top: 1px solid var(--ink);
+}
+
+.ops-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--warn);
+  white-space: nowrap;
+}
+
+.ops-scroll {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  min-width: 0;
+  flex: 1;
+}
+
+.ops-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  background: var(--panel);
+  padding: 1px 6px;
+  white-space: nowrap;
+  flex: none;
+}
+
+.ops-chip-id {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.ops-chip-val {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.ops-empty {
+  font-size: 11px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.ops-spacer {
+  flex: none;
+}
+
+.ops-strip .status {
+  flex: none;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Responsive behavior.                                                     */
+/* ------------------------------------------------------------------------ */
+
+@media (max-width: 1080px) {
+  .brand-note {
+    display: none;
+  }
+
+  .workbench {
+    grid-template-columns: 190px minmax(0, 1fr) 260px;
+  }
+}
+
+@media (max-width: 860px) {
+  /* Rails collapse; canvas and simulator stack vertically. */
+  .workbench {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .canvas-viewport {
+    min-height: 340px;
+    flex: none;
+  }
+
+  .left-rail,
+  .right-rail {
+    border: none;
+    border-top: 1px solid var(--line);
+    overflow-y: visible;
+    flex: none;
+  }
+
+  .left-rail {
+    order: 2;
+  }
+
+  .center {
+    order: 1;
+  }
+
+  .right-rail {
+    order: 3;
+  }
+
+  .rail-head,
+  .center-head {
+    position: static;
+  }
+}
