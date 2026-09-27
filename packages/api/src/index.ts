@@ -5,9 +5,9 @@
  */
 import { createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
-import { SimulationService } from "./loadline/v1/simulation_pb.js";
+import { SimulationService } from "./loadline/v1/simulation_pb";
 
-export * from "./loadline/v1/simulation_pb.js";
+export * from "./loadline/v1/simulation_pb";
 
 export interface LoadlineClientOptions {
   /** Base URL of the Go Connect server, e.g. http://localhost:8080 */
