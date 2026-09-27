@@ -25,6 +25,47 @@ type Run struct {
 	Resolved []providers.ResolvedSpec   // provider-backed specs (capacity/cost)
 	subs     map[chan struct{}]struct{} // wake channels for stream waiters
 	version  uint64                     // bumped on every state change
+
+	// control is the live-run handle (Pause/Resume/Stop/SetTick), set by
+	// RunSimulation when execution starts. Nil before that.
+	control sim.SimRunControl
+}
+
+// SetControl attaches the run-control handle.
+func (r *Run) SetControl(c sim.SimRunControl) {
+	r.mu.Lock()
+	r.control = c
+	r.mu.Unlock()
+}
+
+// Control returns the run-control handle (nil before the run starts).
+func (r *Run) Control() sim.SimRunControl {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.control
+}
+
+// SetStatusPaused marks the run PAUSED (control RPC side) and wakes
+// subscribers so StreamMetrics broadcasts the transition.
+func (r *Run) SetStatusPaused() {
+	r.SetStatus(v1.RunStatus_RUN_STATUS_PAUSED, "")
+}
+
+// SetStatusRunning marks the run RUNNING again (after a resume) and
+// wakes subscribers.
+func (r *Run) SetStatusRunning() {
+	r.SetStatus(v1.RunStatus_RUN_STATUS_RUNNING, "")
+}
+
+// SetStatusStopped publishes partial results and marks the run STOPPED
+// (a terminal state distinct from COMPLETED: the horizon was not
+// reached and the numbers are a partial view of the run).
+func (r *Run) SetStatusStopped(res *sim.RunResult, resolved []providers.ResolvedSpec) {
+	r.mu.Lock()
+	r.Result = res
+	r.Resolved = resolved
+	r.mu.Unlock()
+	r.SetStatus(v1.RunStatus_RUN_STATUS_STOPPED, "")
 }
 
 // Store holds all runs of this process. V1 is deliberately in-memory:
@@ -170,10 +211,12 @@ func (r *Run) ResultsFor() (*sim.RunResult, []providers.ResolvedSpec, error) {
 	switch r.Status {
 	case v1.RunStatus_RUN_STATUS_COMPLETED:
 		return r.Result, r.Resolved, nil
+	case v1.RunStatus_RUN_STATUS_STOPPED:
+		return r.Result, r.Resolved, nil
 	case v1.RunStatus_RUN_STATUS_FAILED:
 		return nil, nil, fmt.Errorf("simulation failed: %s", r.Err)
-	case v1.RunStatus_RUN_STATUS_RUNNING:
-		return nil, nil, fmt.Errorf("simulation is still running")
+	case v1.RunStatus_RUN_STATUS_RUNNING, v1.RunStatus_RUN_STATUS_PAUSED:
+		return nil, nil, fmt.Errorf("simulation has not finished yet")
 	default:
 		return nil, nil, ErrNotCompleted
 	}

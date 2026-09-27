@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"sort"
 	"sync/atomic"
+	"time"
 
 	"connectrpc.com/connect"
+	"github.com/kekubhai/Loadline/apps/simulator/engine"
 	v1 "github.com/kekubhai/Loadline/apps/simulator/loadline/v1"
 	lv1connect "github.com/kekubhai/Loadline/apps/simulator/loadline/v1/loadlinev1connect"
 	"github.com/kekubhai/Loadline/apps/simulator/providers"
@@ -113,15 +115,18 @@ func (s *Service) RunSimulation(ctx context.Context, req *connect.Request[v1.Run
 	r.mu.Unlock()
 
 	s.seq.Add(1)
-	go s.execute(r)
+	go s.execute(r, req.Msg.GetWallDurationMs())
 
 	return connect.NewResponse(&v1.RunSimulationResponse{Simulation: r.Sim}), nil
 }
 
-// execute performs the actual simulation on this goroutine, publishing
-// progress and results into the store as it goes. The hook it hands to
-// the engine is observational: it cannot influence the simulation.
-func (s *Service) execute(r *Run) {
+// execute performs the actual simulation on this goroutine via
+// sim.StartPaced, publishing progress and results into the store as it
+// goes. The hook it hands to the engine is observational: it cannot
+// influence the simulation. Pacing: wallDuration 0 → as fast as possible
+// (unchanged default); >0 → the horizon takes that much wall time and
+// the run becomes pausable/stoppable at natural sampling boundaries.
+func (s *Service) execute(r *Run, wallDurationMS float64) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			r.SetStatus(v1.RunStatus_RUN_STATUS_FAILED, fmt.Sprintf("engine panic: %v", rec))
@@ -139,13 +144,162 @@ func (s *Service) execute(r *Run) {
 		r.SetProgress(snapshotToProto(snap))
 	}
 
-	res, err := sim.Simulate(arch, wl, opts)
+	paced, err := sim.StartPaced(arch, wl, opts, wallDurationMS)
 	if err != nil {
 		r.SetStatus(v1.RunStatus_RUN_STATUS_FAILED, err.Error())
 		return
 	}
+	r.SetControl(paced.Control())
+
+	res := paced.WaitResult()
+	if res == nil {
+		r.SetStatus(v1.RunStatus_RUN_STATUS_FAILED, "engine returned no result")
+		return
+	}
+	if res.Events.StopReason == engine.StopStopped {
+		// Stopped before the horizon: publish the partial run under the
+		// distinct STOPPED status (results stay queryable).
+		r.SetStatusStopped(res, resolved)
+		return
+	}
 	r.SetResult(res, resolved)
 	r.SetStatus(v1.RunStatus_RUN_STATUS_COMPLETED, "")
+}
+
+// PauseSimulation pauses a RUNNING run at the current simulated instant.
+// The status guard makes the transition atomic with respect to the
+// engine's completion: once the run reaches COMPLETED/STOPPED/FAILED,
+// Pause can no longer overwrite it (a pause landing after the last event
+// is rejected instead of clobbering the terminal status).
+func (s *Service) PauseSimulation(ctx context.Context, req *connect.Request[v1.PauseSimulationRequest]) (*connect.Response[v1.PauseSimulationResponse], error) {
+	r, err := s.store.Get(req.Msg.GetSimulationId())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	}
+	ctl := r.Control()
+	if ctl == nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			fmt.Errorf("simulation %s is not running yet", r.ID))
+	}
+	if r.currentStatus() != v1.RunStatus_RUN_STATUS_RUNNING {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			fmt.Errorf("simulation %s is %s, not RUNNING; cannot pause", r.ID, r.currentStatus()))
+	}
+	if !ctl.Pause() {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			fmt.Errorf("simulation %s is no longer running; cannot pause", r.ID))
+	}
+	r.SetStatusPaused()
+	return connect.NewResponse(&v1.PauseSimulationResponse{
+		SimulationId: r.ID, Status: v1.RunStatus_RUN_STATUS_PAUSED,
+	}), nil
+}
+
+// ResumeSimulation resumes a PAUSED run, optionally re-targeting pacing.
+// The PAUSED guard prevents a stale resume from overwriting a terminal
+// status with RUNNING.
+func (s *Service) ResumeSimulation(ctx context.Context, req *connect.Request[v1.ResumeSimulationRequest]) (*connect.Response[v1.ResumeSimulationResponse], error) {
+	r, err := s.store.Get(req.Msg.GetSimulationId())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	}
+	ctl := r.Control()
+	if ctl == nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			fmt.Errorf("simulation %s is not running yet", r.ID))
+	}
+	if r.currentStatus() != v1.RunStatus_RUN_STATUS_PAUSED {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			fmt.Errorf("simulation %s is %s, not PAUSED; cannot resume", r.ID, r.currentStatus()))
+	}
+	if req.Msg.GetWallDurationMs() > 0 {
+		applyWallDuration(ctl, req.Msg.GetWallDurationMs(), r.Sim.GetOptions().GetDurationMs())
+	}
+	ctl.Resume()
+	r.SetStatusRunning()
+	return connect.NewResponse(&v1.ResumeSimulationResponse{
+		SimulationId: r.ID, Status: v1.RunStatus_RUN_STATUS_RUNNING,
+	}), nil
+}
+
+// StopSimulation stops a RUNNING or PAUSED run early; partial results
+// remain queryable under the STOPPED status. Terminal runs are rejected:
+// a stop that lands after completion must not re-label the run STOPPING.
+func (s *Service) StopSimulation(ctx context.Context, req *connect.Request[v1.StopSimulationRequest]) (*connect.Response[v1.StopSimulationResponse], error) {
+	r, err := s.store.Get(req.Msg.GetSimulationId())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	}
+	ctl := r.Control()
+	if ctl == nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			fmt.Errorf("simulation %s is not running yet", r.ID))
+	}
+	switch r.currentStatus() {
+	case v1.RunStatus_RUN_STATUS_RUNNING, v1.RunStatus_RUN_STATUS_PAUSED:
+		// live run: stopping is legal
+	default:
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			fmt.Errorf("simulation %s is %s; cannot stop", r.ID, r.currentStatus()))
+	}
+	ctl.Stop()
+	return connect.NewResponse(&v1.StopSimulationResponse{
+		SimulationId: r.ID, Status: v1.RunStatus_RUN_STATUS_STOPPING,
+	}), nil
+}
+
+// SetWallDuration re-targets the wall-clock pacing of a live run.
+// wallDurationMS ≤ 0 restores as-fast-as-possible; N ms means the full
+// horizon takes N ms of wall time; the speed of a run already paced is
+// multiplied through by the caller (speed buttons compute this).
+func (s *Service) SetWallDuration(ctx context.Context, req *connect.Request[v1.SetWallDurationRequest]) (*connect.Response[v1.SetWallDurationResponse], error) {
+	r, err := s.store.Get(req.Msg.GetSimulationId())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	}
+	ctl := r.Control()
+	if ctl == nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			fmt.Errorf("simulation %s is not running yet", r.ID))
+	}
+	applyWallDuration(ctl, req.Msg.GetWallDurationMs(), r.Sim.GetOptions().GetDurationMs())
+	return connect.NewResponse(&v1.SetWallDurationResponse{
+		SimulationId: r.ID, Status: r.currentStatus(),
+	}), nil
+}
+
+// applyWallDuration converts a wall duration for the full horizon into
+// the per-event tick (the engine's pacing primitive). wallDurationMS ≤ 0
+// restores as-fast-as-possible.
+func applyWallDuration(ctl sim.SimRunControl, wallDurationMS, horizonMS float64) {
+	runner, ok := ctl.(*engine.Runner)
+	if !ok {
+		return
+	}
+	if wallDurationMS <= 0 {
+		runner.SetTick(0)
+		return
+	}
+	if horizonMS <= 0 {
+		horizonMS = 60_000
+	}
+	const eventsPerSimMS = 2 // mirrors sim.StartPaced's estimate
+	budget := int64(horizonMS * eventsPerSimMS)
+	if budget < 1 {
+		budget = 1
+	}
+	tickNS := int64(wallDurationMS * float64(time.Millisecond) / float64(budget))
+	if tickNS < 1 {
+		tickNS = 1
+	}
+	runner.SetTick(time.Duration(tickNS))
+}
+
+// currentStatus reads the run's status safely.
+func (r *Run) currentStatus() v1.RunStatus {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.Status
 }
 
 // GetSimulationStatus polls the run state and latest progress snapshot.
@@ -177,6 +331,7 @@ func (s *Service) StreamMetrics(ctx context.Context, req *connect.Request[v1.Str
 	}
 
 	var lastSent *v1.ProgressSnapshot
+	lastBroadcast := v1.RunStatus_RUN_STATUS_UNSPECIFIED
 	for {
 		// Read version and state atomically so a change landing between
 		// this read and the subscribe below cannot be missed: subscribe()
@@ -218,6 +373,51 @@ func (s *Service) StreamMetrics(ctx context.Context, req *connect.Request[v1.Str
 					SimulationId: r.ID, Status: status, Error: errMsg,
 				},
 			}})
+		case v1.RunStatus_RUN_STATUS_STOPPED:
+			// Terminal: stopped early. Send the control transition frame,
+			// the terminal status, and the partial results.
+			simTime := 0.0
+			if snap != nil {
+				simTime = snap.GetSimTimeMs()
+			}
+			if err := ss.Send(&v1.StreamMetricsResponse{Event: &v1.StreamMetricsResponse_Control{
+				Control: &v1.ControlFrame{
+					SimulationId: r.ID, Status: status, SimTimeMs: simTime,
+				},
+			}}); err != nil {
+				return err
+			}
+			if err := ss.Send(&v1.StreamMetricsResponse{Event: &v1.StreamMetricsResponse_Status{
+				Status: &v1.GetSimulationStatusResponse{
+					SimulationId: r.ID, Status: status,
+				},
+			}}); err != nil {
+				return err
+			}
+			res, _, err := r.ResultsFor()
+			if err != nil {
+				return connect.NewError(connect.CodeInternal, err)
+			}
+			return ss.Send(&v1.StreamMetricsResponse{Event: &v1.StreamMetricsResponse_Results{
+				Results: finalResults(res),
+			}})
+		case v1.RunStatus_RUN_STATUS_PAUSED:
+			// Broadcast the pause transition once per observed change; the
+			// stream stays open and resumes when the run does.
+			if status != lastBroadcast {
+				lastBroadcast = status
+				simTime := 0.0
+				if snap != nil {
+					simTime = snap.GetSimTimeMs()
+				}
+				if err := ss.Send(&v1.StreamMetricsResponse{Event: &v1.StreamMetricsResponse_Control{
+					Control: &v1.ControlFrame{
+						SimulationId: r.ID, Status: status, SimTimeMs: simTime,
+					},
+				}}); err != nil {
+					return err
+				}
+			}
 		}
 
 		// Wait for the next state change or stream cancellation.

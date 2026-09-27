@@ -198,6 +198,11 @@ message CreateSimulationResponse {
 // via GetSimulationStatus.
 message RunSimulationRequest {
   string simulation_id = 1;
+  // Wall-clock duration the FULL horizon should take at 1x speed.
+  // 0 (default) = run as fast as possible. A paced run is interactively
+  // pausable/stoppable at natural sampling boundaries; results are
+  // identical at any pacing.
+  double wall_duration_ms = 2;
 }
 
 message RunSimulationResponse {
@@ -211,6 +216,9 @@ enum RunStatus {
   RUN_STATUS_RUNNING = 2;   // executing on the simulation engine
   RUN_STATUS_COMPLETED = 3; // finished; results available
   RUN_STATUS_FAILED = 4;    // rejected or errored; message explains why
+  RUN_STATUS_PAUSED = 5;    // held at the current simulated instant
+  RUN_STATUS_STOPPING = 6;  // stop requested; draining the last event
+  RUN_STATUS_STOPPED = 7;   // stopped before the horizon; partial results
 }
 
 // ProgressSnapshot is a lightweight mid-run sample of system counters and
@@ -224,6 +232,70 @@ message ProgressSnapshot {
   uint64 failed = 5;
   int64 in_flight = 6;
   repeated ComponentOccupancy components = 7;
+  // Wall-clock milliseconds elapsed since the run started. Sim time vs
+  // wall time makes the pacing mode visible (accelerated runs finish
+  // long before the wall duration).
+  double wall_elapsed_ms = 8;
+  // Engine counters: events processed so far and still queued.
+  uint64 events_processed = 9;
+  int64 events_pending = 10;
+}
+
+// PauseSimulationRequest pauses a run at the current simulated instant.
+message PauseSimulationRequest {
+  string simulation_id = 1;
+}
+
+message PauseSimulationResponse {
+  string simulation_id = 1;
+  RunStatus status = 2;
+}
+
+// ResumeSimulationRequest un-pauses a run, optionally re-targeting the
+// wall-clock pacing in the same call.
+message ResumeSimulationRequest {
+  string simulation_id = 1;
+  // 0 = keep the current pacing.
+  double wall_duration_ms = 2;
+}
+
+message ResumeSimulationResponse {
+  string simulation_id = 1;
+  RunStatus status = 2;
+}
+
+// StopSimulationRequest stops a run before its horizon.
+message StopSimulationRequest {
+  string simulation_id = 1;
+}
+
+message StopSimulationResponse {
+  string simulation_id = 1;
+  RunStatus status = 2;
+}
+
+// SetWallDurationRequest re-targets the pacing of a live run without
+// pausing it.
+message SetWallDurationRequest {
+  string simulation_id = 1;
+  // Wall-clock duration the FULL horizon should take. 0 restores the
+  // default 1s-of-sim-per-second. Pacing stays exact at every speed.
+  double wall_duration_ms = 2;
+}
+
+message SetWallDurationResponse {
+  string simulation_id = 1;
+  RunStatus status = 2;
+}
+
+// ControlFrame is broadcast on every run-control state change (pause,
+// resume, stop, speed change, completion) so StreamMetrics subscribers
+// see the run's operational state, not just its metrics.
+message ControlFrame {
+  string simulation_id = 1;
+  RunStatus status = 2;
+  // Simulated time the transition took effect at.
+  double sim_time_ms = 3;
 }
 
 // ComponentOccupancy is one component's instantaneous state.
@@ -261,6 +333,7 @@ message StreamMetricsResponse {
     ProgressSnapshot progress = 1;
     GetSimulationStatusResponse status = 2;
     FinalResults results = 3;
+    ControlFrame control = 4;
   }
 }
 
@@ -514,8 +587,23 @@ service SimulationService {
   // Poll a simulation's status and latest progress snapshot.
   rpc GetSimulationStatus(GetSimulationStatusRequest) returns (GetSimulationStatusResponse);
   // Stream progress snapshots while running, then status and final
-  // results; the stream ends after the terminal frame.
+  // results; the stream ends after the terminal frame. Control
+  // transitions (pause/resume/stop) are also broadcast on this stream.
   rpc StreamMetrics(StreamMetricsRequest) returns (stream StreamMetricsResponse);
+  // Pause a RUNNING simulation at the current simulated instant. The
+  // engine finishes the in-flight event, then idles without advancing
+  // simulated time. Final metrics remain available on completion.
+  rpc PauseSimulation(PauseSimulationRequest) returns (PauseSimulationResponse);
+  // Resume a PAUSED simulation, optionally re-targeting the wall-clock
+  // pacing in the same call.
+  rpc ResumeSimulation(ResumeSimulationRequest) returns (ResumeSimulationResponse);
+  // Stop a RUNNING or PAUSED simulation before its horizon. The engine
+  // drains the in-flight event and publishes partial results (marked
+  // stopped, not completed); they stay queryable.
+  rpc StopSimulation(StopSimulationRequest) returns (StopSimulationResponse);
+  // SetWallDuration re-targets the wall-clock pacing of a live run
+  // without pausing it. 0 restores the default 1s-of-sim-per-second.
+  rpc SetWallDuration(SetWallDurationRequest) returns (SetWallDurationResponse);
   // Fetch final results of a completed run.
   rpc GetResults(GetResultsRequest) returns (GetResultsResponse);
   // Fetch the bottleneck diagnosis (optionally vs a baseline run).

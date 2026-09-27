@@ -158,6 +158,9 @@ const (
 	RunStatus_RUN_STATUS_RUNNING     RunStatus = 2 // executing on the simulation engine
 	RunStatus_RUN_STATUS_COMPLETED   RunStatus = 3 // finished; results available
 	RunStatus_RUN_STATUS_FAILED      RunStatus = 4 // rejected or errored; message explains why
+	RunStatus_RUN_STATUS_PAUSED      RunStatus = 5 // held at the current simulated instant
+	RunStatus_RUN_STATUS_STOPPING    RunStatus = 6 // stop requested; draining the last event
+	RunStatus_RUN_STATUS_STOPPED     RunStatus = 7 // stopped before the horizon; partial results
 )
 
 // Enum value maps for RunStatus.
@@ -168,6 +171,9 @@ var (
 		2: "RUN_STATUS_RUNNING",
 		3: "RUN_STATUS_COMPLETED",
 		4: "RUN_STATUS_FAILED",
+		5: "RUN_STATUS_PAUSED",
+		6: "RUN_STATUS_STOPPING",
+		7: "RUN_STATUS_STOPPED",
 	}
 	RunStatus_value = map[string]int32{
 		"RUN_STATUS_UNSPECIFIED": 0,
@@ -175,6 +181,9 @@ var (
 		"RUN_STATUS_RUNNING":     2,
 		"RUN_STATUS_COMPLETED":   3,
 		"RUN_STATUS_FAILED":      4,
+		"RUN_STATUS_PAUSED":      5,
+		"RUN_STATUS_STOPPING":    6,
+		"RUN_STATUS_STOPPED":     7,
 	}
 )
 
@@ -1223,10 +1232,15 @@ func (x *CreateSimulationResponse) GetSimulation() *Simulation {
 // simulation. Progress can then be watched via StreamMetrics or polled
 // via GetSimulationStatus.
 type RunSimulationRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SimulationId  string                 `protobuf:"bytes,1,opt,name=simulation_id,json=simulationId,proto3" json:"simulation_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	SimulationId string                 `protobuf:"bytes,1,opt,name=simulation_id,json=simulationId,proto3" json:"simulation_id,omitempty"`
+	// Wall-clock duration the FULL horizon should take at 1x speed.
+	// 0 (default) = run as fast as possible. A paced run is interactively
+	// pausable/stoppable at natural sampling boundaries; results are
+	// identical at any pacing.
+	WallDurationMs float64 `protobuf:"fixed64,2,opt,name=wall_duration_ms,json=wallDurationMs,proto3" json:"wall_duration_ms,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *RunSimulationRequest) Reset() {
@@ -1264,6 +1278,13 @@ func (x *RunSimulationRequest) GetSimulationId() string {
 		return x.SimulationId
 	}
 	return ""
+}
+
+func (x *RunSimulationRequest) GetWallDurationMs() float64 {
+	if x != nil {
+		return x.WallDurationMs
+	}
+	return 0
 }
 
 type RunSimulationResponse struct {
@@ -1314,16 +1335,23 @@ func (x *RunSimulationResponse) GetSimulation() *Simulation {
 // per-component occupancy. These are real values read from the running
 // kernel's state, not interpolations.
 type ProgressSnapshot struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SimTimeMs     float64                `protobuf:"fixed64,1,opt,name=sim_time_ms,json=simTimeMs,proto3" json:"sim_time_ms,omitempty"`
-	Generated     uint64                 `protobuf:"varint,2,opt,name=generated,proto3" json:"generated,omitempty"`
-	Completed     uint64                 `protobuf:"varint,3,opt,name=completed,proto3" json:"completed,omitempty"`
-	Rejected      uint64                 `protobuf:"varint,4,opt,name=rejected,proto3" json:"rejected,omitempty"`
-	Failed        uint64                 `protobuf:"varint,5,opt,name=failed,proto3" json:"failed,omitempty"`
-	InFlight      int64                  `protobuf:"varint,6,opt,name=in_flight,json=inFlight,proto3" json:"in_flight,omitempty"`
-	Components    []*ComponentOccupancy  `protobuf:"bytes,7,rep,name=components,proto3" json:"components,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	SimTimeMs  float64                `protobuf:"fixed64,1,opt,name=sim_time_ms,json=simTimeMs,proto3" json:"sim_time_ms,omitempty"`
+	Generated  uint64                 `protobuf:"varint,2,opt,name=generated,proto3" json:"generated,omitempty"`
+	Completed  uint64                 `protobuf:"varint,3,opt,name=completed,proto3" json:"completed,omitempty"`
+	Rejected   uint64                 `protobuf:"varint,4,opt,name=rejected,proto3" json:"rejected,omitempty"`
+	Failed     uint64                 `protobuf:"varint,5,opt,name=failed,proto3" json:"failed,omitempty"`
+	InFlight   int64                  `protobuf:"varint,6,opt,name=in_flight,json=inFlight,proto3" json:"in_flight,omitempty"`
+	Components []*ComponentOccupancy  `protobuf:"bytes,7,rep,name=components,proto3" json:"components,omitempty"`
+	// Wall-clock milliseconds elapsed since the run started. Sim time vs
+	// wall time makes the pacing mode visible (accelerated runs finish
+	// long before the wall duration).
+	WallElapsedMs float64 `protobuf:"fixed64,8,opt,name=wall_elapsed_ms,json=wallElapsedMs,proto3" json:"wall_elapsed_ms,omitempty"`
+	// Engine counters: events processed so far and still queued.
+	EventsProcessed uint64 `protobuf:"varint,9,opt,name=events_processed,json=eventsProcessed,proto3" json:"events_processed,omitempty"`
+	EventsPending   int64  `protobuf:"varint,10,opt,name=events_pending,json=eventsPending,proto3" json:"events_pending,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ProgressSnapshot) Reset() {
@@ -1405,6 +1433,500 @@ func (x *ProgressSnapshot) GetComponents() []*ComponentOccupancy {
 	return nil
 }
 
+func (x *ProgressSnapshot) GetWallElapsedMs() float64 {
+	if x != nil {
+		return x.WallElapsedMs
+	}
+	return 0
+}
+
+func (x *ProgressSnapshot) GetEventsProcessed() uint64 {
+	if x != nil {
+		return x.EventsProcessed
+	}
+	return 0
+}
+
+func (x *ProgressSnapshot) GetEventsPending() int64 {
+	if x != nil {
+		return x.EventsPending
+	}
+	return 0
+}
+
+// PauseSimulationRequest pauses a run at the current simulated instant.
+type PauseSimulationRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SimulationId  string                 `protobuf:"bytes,1,opt,name=simulation_id,json=simulationId,proto3" json:"simulation_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PauseSimulationRequest) Reset() {
+	*x = PauseSimulationRequest{}
+	mi := &file_loadline_v1_simulation_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PauseSimulationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PauseSimulationRequest) ProtoMessage() {}
+
+func (x *PauseSimulationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_loadline_v1_simulation_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PauseSimulationRequest.ProtoReflect.Descriptor instead.
+func (*PauseSimulationRequest) Descriptor() ([]byte, []int) {
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *PauseSimulationRequest) GetSimulationId() string {
+	if x != nil {
+		return x.SimulationId
+	}
+	return ""
+}
+
+type PauseSimulationResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SimulationId  string                 `protobuf:"bytes,1,opt,name=simulation_id,json=simulationId,proto3" json:"simulation_id,omitempty"`
+	Status        RunStatus              `protobuf:"varint,2,opt,name=status,proto3,enum=loadline.v1.RunStatus" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PauseSimulationResponse) Reset() {
+	*x = PauseSimulationResponse{}
+	mi := &file_loadline_v1_simulation_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PauseSimulationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PauseSimulationResponse) ProtoMessage() {}
+
+func (x *PauseSimulationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_loadline_v1_simulation_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PauseSimulationResponse.ProtoReflect.Descriptor instead.
+func (*PauseSimulationResponse) Descriptor() ([]byte, []int) {
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *PauseSimulationResponse) GetSimulationId() string {
+	if x != nil {
+		return x.SimulationId
+	}
+	return ""
+}
+
+func (x *PauseSimulationResponse) GetStatus() RunStatus {
+	if x != nil {
+		return x.Status
+	}
+	return RunStatus_RUN_STATUS_UNSPECIFIED
+}
+
+// ResumeSimulationRequest un-pauses a run, optionally re-targeting the
+// wall-clock pacing in the same call.
+type ResumeSimulationRequest struct {
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	SimulationId string                 `protobuf:"bytes,1,opt,name=simulation_id,json=simulationId,proto3" json:"simulation_id,omitempty"`
+	// 0 = keep the current pacing.
+	WallDurationMs float64 `protobuf:"fixed64,2,opt,name=wall_duration_ms,json=wallDurationMs,proto3" json:"wall_duration_ms,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ResumeSimulationRequest) Reset() {
+	*x = ResumeSimulationRequest{}
+	mi := &file_loadline_v1_simulation_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResumeSimulationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResumeSimulationRequest) ProtoMessage() {}
+
+func (x *ResumeSimulationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_loadline_v1_simulation_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResumeSimulationRequest.ProtoReflect.Descriptor instead.
+func (*ResumeSimulationRequest) Descriptor() ([]byte, []int) {
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *ResumeSimulationRequest) GetSimulationId() string {
+	if x != nil {
+		return x.SimulationId
+	}
+	return ""
+}
+
+func (x *ResumeSimulationRequest) GetWallDurationMs() float64 {
+	if x != nil {
+		return x.WallDurationMs
+	}
+	return 0
+}
+
+type ResumeSimulationResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SimulationId  string                 `protobuf:"bytes,1,opt,name=simulation_id,json=simulationId,proto3" json:"simulation_id,omitempty"`
+	Status        RunStatus              `protobuf:"varint,2,opt,name=status,proto3,enum=loadline.v1.RunStatus" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResumeSimulationResponse) Reset() {
+	*x = ResumeSimulationResponse{}
+	mi := &file_loadline_v1_simulation_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResumeSimulationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResumeSimulationResponse) ProtoMessage() {}
+
+func (x *ResumeSimulationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_loadline_v1_simulation_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResumeSimulationResponse.ProtoReflect.Descriptor instead.
+func (*ResumeSimulationResponse) Descriptor() ([]byte, []int) {
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ResumeSimulationResponse) GetSimulationId() string {
+	if x != nil {
+		return x.SimulationId
+	}
+	return ""
+}
+
+func (x *ResumeSimulationResponse) GetStatus() RunStatus {
+	if x != nil {
+		return x.Status
+	}
+	return RunStatus_RUN_STATUS_UNSPECIFIED
+}
+
+// StopSimulationRequest stops a run before its horizon.
+type StopSimulationRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SimulationId  string                 `protobuf:"bytes,1,opt,name=simulation_id,json=simulationId,proto3" json:"simulation_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StopSimulationRequest) Reset() {
+	*x = StopSimulationRequest{}
+	mi := &file_loadline_v1_simulation_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StopSimulationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StopSimulationRequest) ProtoMessage() {}
+
+func (x *StopSimulationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_loadline_v1_simulation_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StopSimulationRequest.ProtoReflect.Descriptor instead.
+func (*StopSimulationRequest) Descriptor() ([]byte, []int) {
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *StopSimulationRequest) GetSimulationId() string {
+	if x != nil {
+		return x.SimulationId
+	}
+	return ""
+}
+
+type StopSimulationResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SimulationId  string                 `protobuf:"bytes,1,opt,name=simulation_id,json=simulationId,proto3" json:"simulation_id,omitempty"`
+	Status        RunStatus              `protobuf:"varint,2,opt,name=status,proto3,enum=loadline.v1.RunStatus" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StopSimulationResponse) Reset() {
+	*x = StopSimulationResponse{}
+	mi := &file_loadline_v1_simulation_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StopSimulationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StopSimulationResponse) ProtoMessage() {}
+
+func (x *StopSimulationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_loadline_v1_simulation_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StopSimulationResponse.ProtoReflect.Descriptor instead.
+func (*StopSimulationResponse) Descriptor() ([]byte, []int) {
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *StopSimulationResponse) GetSimulationId() string {
+	if x != nil {
+		return x.SimulationId
+	}
+	return ""
+}
+
+func (x *StopSimulationResponse) GetStatus() RunStatus {
+	if x != nil {
+		return x.Status
+	}
+	return RunStatus_RUN_STATUS_UNSPECIFIED
+}
+
+// SetWallDurationRequest re-targets the pacing of a live run without
+// pausing it.
+type SetWallDurationRequest struct {
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	SimulationId string                 `protobuf:"bytes,1,opt,name=simulation_id,json=simulationId,proto3" json:"simulation_id,omitempty"`
+	// Wall-clock duration the FULL horizon should take. 0 restores the
+	// default 1s-of-sim-per-second. Pacing stays exact at every speed.
+	WallDurationMs float64 `protobuf:"fixed64,2,opt,name=wall_duration_ms,json=wallDurationMs,proto3" json:"wall_duration_ms,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *SetWallDurationRequest) Reset() {
+	*x = SetWallDurationRequest{}
+	mi := &file_loadline_v1_simulation_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetWallDurationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetWallDurationRequest) ProtoMessage() {}
+
+func (x *SetWallDurationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_loadline_v1_simulation_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetWallDurationRequest.ProtoReflect.Descriptor instead.
+func (*SetWallDurationRequest) Descriptor() ([]byte, []int) {
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *SetWallDurationRequest) GetSimulationId() string {
+	if x != nil {
+		return x.SimulationId
+	}
+	return ""
+}
+
+func (x *SetWallDurationRequest) GetWallDurationMs() float64 {
+	if x != nil {
+		return x.WallDurationMs
+	}
+	return 0
+}
+
+type SetWallDurationResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SimulationId  string                 `protobuf:"bytes,1,opt,name=simulation_id,json=simulationId,proto3" json:"simulation_id,omitempty"`
+	Status        RunStatus              `protobuf:"varint,2,opt,name=status,proto3,enum=loadline.v1.RunStatus" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetWallDurationResponse) Reset() {
+	*x = SetWallDurationResponse{}
+	mi := &file_loadline_v1_simulation_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetWallDurationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetWallDurationResponse) ProtoMessage() {}
+
+func (x *SetWallDurationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_loadline_v1_simulation_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetWallDurationResponse.ProtoReflect.Descriptor instead.
+func (*SetWallDurationResponse) Descriptor() ([]byte, []int) {
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *SetWallDurationResponse) GetSimulationId() string {
+	if x != nil {
+		return x.SimulationId
+	}
+	return ""
+}
+
+func (x *SetWallDurationResponse) GetStatus() RunStatus {
+	if x != nil {
+		return x.Status
+	}
+	return RunStatus_RUN_STATUS_UNSPECIFIED
+}
+
+// ControlFrame is broadcast on every run-control state change (pause,
+// resume, stop, speed change, completion) so StreamMetrics subscribers
+// see the run's operational state, not just its metrics.
+type ControlFrame struct {
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	SimulationId string                 `protobuf:"bytes,1,opt,name=simulation_id,json=simulationId,proto3" json:"simulation_id,omitempty"`
+	Status       RunStatus              `protobuf:"varint,2,opt,name=status,proto3,enum=loadline.v1.RunStatus" json:"status,omitempty"`
+	// Simulated time the transition took effect at.
+	SimTimeMs     float64 `protobuf:"fixed64,3,opt,name=sim_time_ms,json=simTimeMs,proto3" json:"sim_time_ms,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ControlFrame) Reset() {
+	*x = ControlFrame{}
+	mi := &file_loadline_v1_simulation_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ControlFrame) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ControlFrame) ProtoMessage() {}
+
+func (x *ControlFrame) ProtoReflect() protoreflect.Message {
+	mi := &file_loadline_v1_simulation_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ControlFrame.ProtoReflect.Descriptor instead.
+func (*ControlFrame) Descriptor() ([]byte, []int) {
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *ControlFrame) GetSimulationId() string {
+	if x != nil {
+		return x.SimulationId
+	}
+	return ""
+}
+
+func (x *ControlFrame) GetStatus() RunStatus {
+	if x != nil {
+		return x.Status
+	}
+	return RunStatus_RUN_STATUS_UNSPECIFIED
+}
+
+func (x *ControlFrame) GetSimTimeMs() float64 {
+	if x != nil {
+		return x.SimTimeMs
+	}
+	return 0
+}
+
 // ComponentOccupancy is one component's instantaneous state.
 type ComponentOccupancy struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1420,7 +1942,7 @@ type ComponentOccupancy struct {
 
 func (x *ComponentOccupancy) Reset() {
 	*x = ComponentOccupancy{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[15]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1432,7 +1954,7 @@ func (x *ComponentOccupancy) String() string {
 func (*ComponentOccupancy) ProtoMessage() {}
 
 func (x *ComponentOccupancy) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[15]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1445,7 +1967,7 @@ func (x *ComponentOccupancy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ComponentOccupancy.ProtoReflect.Descriptor instead.
 func (*ComponentOccupancy) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{15}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ComponentOccupancy) GetComponentId() string {
@@ -1500,7 +2022,7 @@ type GetSimulationStatusRequest struct {
 
 func (x *GetSimulationStatusRequest) Reset() {
 	*x = GetSimulationStatusRequest{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[16]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1512,7 +2034,7 @@ func (x *GetSimulationStatusRequest) String() string {
 func (*GetSimulationStatusRequest) ProtoMessage() {}
 
 func (x *GetSimulationStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[16]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1525,7 +2047,7 @@ func (x *GetSimulationStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSimulationStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetSimulationStatusRequest) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{16}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GetSimulationStatusRequest) GetSimulationId() string {
@@ -1549,7 +2071,7 @@ type GetSimulationStatusResponse struct {
 
 func (x *GetSimulationStatusResponse) Reset() {
 	*x = GetSimulationStatusResponse{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[17]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1561,7 +2083,7 @@ func (x *GetSimulationStatusResponse) String() string {
 func (*GetSimulationStatusResponse) ProtoMessage() {}
 
 func (x *GetSimulationStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[17]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1574,7 +2096,7 @@ func (x *GetSimulationStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSimulationStatusResponse.ProtoReflect.Descriptor instead.
 func (*GetSimulationStatusResponse) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{17}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *GetSimulationStatusResponse) GetSimulationId() string {
@@ -1616,7 +2138,7 @@ type StreamMetricsRequest struct {
 
 func (x *StreamMetricsRequest) Reset() {
 	*x = StreamMetricsRequest{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[18]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1628,7 +2150,7 @@ func (x *StreamMetricsRequest) String() string {
 func (*StreamMetricsRequest) ProtoMessage() {}
 
 func (x *StreamMetricsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[18]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1641,7 +2163,7 @@ func (x *StreamMetricsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamMetricsRequest.ProtoReflect.Descriptor instead.
 func (*StreamMetricsRequest) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{18}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *StreamMetricsRequest) GetSimulationId() string {
@@ -1658,6 +2180,7 @@ type StreamMetricsResponse struct {
 	//	*StreamMetricsResponse_Progress
 	//	*StreamMetricsResponse_Status
 	//	*StreamMetricsResponse_Results
+	//	*StreamMetricsResponse_Control
 	Event         isStreamMetricsResponse_Event `protobuf_oneof:"event"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1665,7 +2188,7 @@ type StreamMetricsResponse struct {
 
 func (x *StreamMetricsResponse) Reset() {
 	*x = StreamMetricsResponse{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[19]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1677,7 +2200,7 @@ func (x *StreamMetricsResponse) String() string {
 func (*StreamMetricsResponse) ProtoMessage() {}
 
 func (x *StreamMetricsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[19]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1690,7 +2213,7 @@ func (x *StreamMetricsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamMetricsResponse.ProtoReflect.Descriptor instead.
 func (*StreamMetricsResponse) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{19}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *StreamMetricsResponse) GetEvent() isStreamMetricsResponse_Event {
@@ -1727,6 +2250,15 @@ func (x *StreamMetricsResponse) GetResults() *FinalResults {
 	return nil
 }
 
+func (x *StreamMetricsResponse) GetControl() *ControlFrame {
+	if x != nil {
+		if x, ok := x.Event.(*StreamMetricsResponse_Control); ok {
+			return x.Control
+		}
+	}
+	return nil
+}
+
 type isStreamMetricsResponse_Event interface {
 	isStreamMetricsResponse_Event()
 }
@@ -1743,11 +2275,17 @@ type StreamMetricsResponse_Results struct {
 	Results *FinalResults `protobuf:"bytes,3,opt,name=results,proto3,oneof"`
 }
 
+type StreamMetricsResponse_Control struct {
+	Control *ControlFrame `protobuf:"bytes,4,opt,name=control,proto3,oneof"`
+}
+
 func (*StreamMetricsResponse_Progress) isStreamMetricsResponse_Event() {}
 
 func (*StreamMetricsResponse_Status) isStreamMetricsResponse_Event() {}
 
 func (*StreamMetricsResponse_Results) isStreamMetricsResponse_Event() {}
+
+func (*StreamMetricsResponse_Control) isStreamMetricsResponse_Event() {}
 
 // ComponentMetrics is the per-component report. Definitions match
 // sim.ComponentMetrics exactly (see the Go docs): Arrived/Completed/
@@ -1780,7 +2318,7 @@ type ComponentMetrics struct {
 
 func (x *ComponentMetrics) Reset() {
 	*x = ComponentMetrics{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[20]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1792,7 +2330,7 @@ func (x *ComponentMetrics) String() string {
 func (*ComponentMetrics) ProtoMessage() {}
 
 func (x *ComponentMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[20]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1805,7 +2343,7 @@ func (x *ComponentMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ComponentMetrics.ProtoReflect.Descriptor instead.
 func (*ComponentMetrics) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{20}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *ComponentMetrics) GetId() string {
@@ -1944,7 +2482,7 @@ type FailureRecord struct {
 
 func (x *FailureRecord) Reset() {
 	*x = FailureRecord{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[21]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1956,7 +2494,7 @@ func (x *FailureRecord) String() string {
 func (*FailureRecord) ProtoMessage() {}
 
 func (x *FailureRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[21]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1969,7 +2507,7 @@ func (x *FailureRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FailureRecord.ProtoReflect.Descriptor instead.
 func (*FailureRecord) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{21}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *FailureRecord) GetRequestId() uint64 {
@@ -2055,7 +2593,7 @@ type SystemMetrics struct {
 
 func (x *SystemMetrics) Reset() {
 	*x = SystemMetrics{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[22]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2067,7 +2605,7 @@ func (x *SystemMetrics) String() string {
 func (*SystemMetrics) ProtoMessage() {}
 
 func (x *SystemMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[22]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2080,7 +2618,7 @@ func (x *SystemMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SystemMetrics.ProtoReflect.Descriptor instead.
 func (*SystemMetrics) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{22}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *SystemMetrics) GetDurationMs() float64 {
@@ -2208,7 +2746,7 @@ type RunSummary struct {
 
 func (x *RunSummary) Reset() {
 	*x = RunSummary{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[23]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2220,7 +2758,7 @@ func (x *RunSummary) String() string {
 func (*RunSummary) ProtoMessage() {}
 
 func (x *RunSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[23]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2233,7 +2771,7 @@ func (x *RunSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunSummary.ProtoReflect.Descriptor instead.
 func (*RunSummary) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{23}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *RunSummary) GetEventsProcessed() uint64 {
@@ -2274,7 +2812,7 @@ type GetResultsRequest struct {
 
 func (x *GetResultsRequest) Reset() {
 	*x = GetResultsRequest{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[24]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2286,7 +2824,7 @@ func (x *GetResultsRequest) String() string {
 func (*GetResultsRequest) ProtoMessage() {}
 
 func (x *GetResultsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[24]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2299,7 +2837,7 @@ func (x *GetResultsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetResultsRequest.ProtoReflect.Descriptor instead.
 func (*GetResultsRequest) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{24}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *GetResultsRequest) GetSimulationId() string {
@@ -2322,7 +2860,7 @@ type GetResultsResponse struct {
 
 func (x *GetResultsResponse) Reset() {
 	*x = GetResultsResponse{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[25]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2334,7 +2872,7 @@ func (x *GetResultsResponse) String() string {
 func (*GetResultsResponse) ProtoMessage() {}
 
 func (x *GetResultsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[25]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2347,7 +2885,7 @@ func (x *GetResultsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetResultsResponse.ProtoReflect.Descriptor instead.
 func (*GetResultsResponse) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{25}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *GetResultsResponse) GetSimulationId() string {
@@ -2399,7 +2937,7 @@ type FinalResults struct {
 
 func (x *FinalResults) Reset() {
 	*x = FinalResults{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[26]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2411,7 +2949,7 @@ func (x *FinalResults) String() string {
 func (*FinalResults) ProtoMessage() {}
 
 func (x *FinalResults) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[26]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2424,7 +2962,7 @@ func (x *FinalResults) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FinalResults.ProtoReflect.Descriptor instead.
 func (*FinalResults) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{26}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *FinalResults) GetPlan() *LoadPlan {
@@ -2470,7 +3008,7 @@ type Bottleneck struct {
 
 func (x *Bottleneck) Reset() {
 	*x = Bottleneck{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[27]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2482,7 +3020,7 @@ func (x *Bottleneck) String() string {
 func (*Bottleneck) ProtoMessage() {}
 
 func (x *Bottleneck) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[27]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2495,7 +3033,7 @@ func (x *Bottleneck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Bottleneck.ProtoReflect.Descriptor instead.
 func (*Bottleneck) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{27}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *Bottleneck) GetComponentId() string {
@@ -2546,7 +3084,7 @@ type Diagnosis struct {
 
 func (x *Diagnosis) Reset() {
 	*x = Diagnosis{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[28]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2558,7 +3096,7 @@ func (x *Diagnosis) String() string {
 func (*Diagnosis) ProtoMessage() {}
 
 func (x *Diagnosis) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[28]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2571,7 +3109,7 @@ func (x *Diagnosis) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Diagnosis.ProtoReflect.Descriptor instead.
 func (*Diagnosis) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{28}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *Diagnosis) GetBottlenecks() []*Bottleneck {
@@ -2616,7 +3154,7 @@ type GetDiagnosisRequest struct {
 
 func (x *GetDiagnosisRequest) Reset() {
 	*x = GetDiagnosisRequest{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[29]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2628,7 +3166,7 @@ func (x *GetDiagnosisRequest) String() string {
 func (*GetDiagnosisRequest) ProtoMessage() {}
 
 func (x *GetDiagnosisRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[29]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2641,7 +3179,7 @@ func (x *GetDiagnosisRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDiagnosisRequest.ProtoReflect.Descriptor instead.
 func (*GetDiagnosisRequest) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{29}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *GetDiagnosisRequest) GetSimulationId() string {
@@ -2668,7 +3206,7 @@ type GetDiagnosisResponse struct {
 
 func (x *GetDiagnosisResponse) Reset() {
 	*x = GetDiagnosisResponse{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[30]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2680,7 +3218,7 @@ func (x *GetDiagnosisResponse) String() string {
 func (*GetDiagnosisResponse) ProtoMessage() {}
 
 func (x *GetDiagnosisResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[30]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2693,7 +3231,7 @@ func (x *GetDiagnosisResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDiagnosisResponse.ProtoReflect.Descriptor instead.
 func (*GetDiagnosisResponse) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{30}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *GetDiagnosisResponse) GetSimulationId() string {
@@ -2732,7 +3270,7 @@ type CapacityReport struct {
 
 func (x *CapacityReport) Reset() {
 	*x = CapacityReport{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[31]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2744,7 +3282,7 @@ func (x *CapacityReport) String() string {
 func (*CapacityReport) ProtoMessage() {}
 
 func (x *CapacityReport) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[31]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2757,7 +3295,7 @@ func (x *CapacityReport) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CapacityReport.ProtoReflect.Descriptor instead.
 func (*CapacityReport) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{31}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *CapacityReport) GetComponentId() string {
@@ -2842,7 +3380,7 @@ type GetCapacityRequest struct {
 
 func (x *GetCapacityRequest) Reset() {
 	*x = GetCapacityRequest{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[32]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2854,7 +3392,7 @@ func (x *GetCapacityRequest) String() string {
 func (*GetCapacityRequest) ProtoMessage() {}
 
 func (x *GetCapacityRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[32]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2867,7 +3405,7 @@ func (x *GetCapacityRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCapacityRequest.ProtoReflect.Descriptor instead.
 func (*GetCapacityRequest) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{32}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *GetCapacityRequest) GetSimulationId() string {
@@ -2894,7 +3432,7 @@ type GetCapacityResponse struct {
 
 func (x *GetCapacityResponse) Reset() {
 	*x = GetCapacityResponse{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[33]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2906,7 +3444,7 @@ func (x *GetCapacityResponse) String() string {
 func (*GetCapacityResponse) ProtoMessage() {}
 
 func (x *GetCapacityResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[33]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2919,7 +3457,7 @@ func (x *GetCapacityResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCapacityResponse.ProtoReflect.Descriptor instead.
 func (*GetCapacityResponse) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{33}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *GetCapacityResponse) GetSimulationId() string {
@@ -2952,7 +3490,7 @@ type CostLineItem struct {
 
 func (x *CostLineItem) Reset() {
 	*x = CostLineItem{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[34]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2964,7 +3502,7 @@ func (x *CostLineItem) String() string {
 func (*CostLineItem) ProtoMessage() {}
 
 func (x *CostLineItem) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[34]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2977,7 +3515,7 @@ func (x *CostLineItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CostLineItem.ProtoReflect.Descriptor instead.
 func (*CostLineItem) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{34}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *CostLineItem) GetComponentId() string {
@@ -3043,7 +3581,7 @@ type ComponentCost struct {
 
 func (x *ComponentCost) Reset() {
 	*x = ComponentCost{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[35]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3055,7 +3593,7 @@ func (x *ComponentCost) String() string {
 func (*ComponentCost) ProtoMessage() {}
 
 func (x *ComponentCost) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[35]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3068,7 +3606,7 @@ func (x *ComponentCost) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ComponentCost.ProtoReflect.Descriptor instead.
 func (*ComponentCost) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{35}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *ComponentCost) GetComponentId() string {
@@ -3122,7 +3660,7 @@ type CostEstimate struct {
 
 func (x *CostEstimate) Reset() {
 	*x = CostEstimate{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[36]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3134,7 +3672,7 @@ func (x *CostEstimate) String() string {
 func (*CostEstimate) ProtoMessage() {}
 
 func (x *CostEstimate) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[36]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3147,7 +3685,7 @@ func (x *CostEstimate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CostEstimate.ProtoReflect.Descriptor instead.
 func (*CostEstimate) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{36}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *CostEstimate) GetCurrency() string {
@@ -3196,7 +3734,7 @@ type GetCostEstimateRequest struct {
 
 func (x *GetCostEstimateRequest) Reset() {
 	*x = GetCostEstimateRequest{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[37]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3208,7 +3746,7 @@ func (x *GetCostEstimateRequest) String() string {
 func (*GetCostEstimateRequest) ProtoMessage() {}
 
 func (x *GetCostEstimateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[37]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3221,7 +3759,7 @@ func (x *GetCostEstimateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCostEstimateRequest.ProtoReflect.Descriptor instead.
 func (*GetCostEstimateRequest) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{37}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *GetCostEstimateRequest) GetSimulationId() string {
@@ -3241,7 +3779,7 @@ type GetCostEstimateResponse struct {
 
 func (x *GetCostEstimateResponse) Reset() {
 	*x = GetCostEstimateResponse{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[38]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3253,7 +3791,7 @@ func (x *GetCostEstimateResponse) String() string {
 func (*GetCostEstimateResponse) ProtoMessage() {}
 
 func (x *GetCostEstimateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[38]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3266,7 +3804,7 @@ func (x *GetCostEstimateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCostEstimateResponse.ProtoReflect.Descriptor instead.
 func (*GetCostEstimateResponse) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{38}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *GetCostEstimateResponse) GetSimulationId() string {
@@ -3303,7 +3841,7 @@ type CatalogService struct {
 
 func (x *CatalogService) Reset() {
 	*x = CatalogService{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[39]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3315,7 +3853,7 @@ func (x *CatalogService) String() string {
 func (*CatalogService) ProtoMessage() {}
 
 func (x *CatalogService) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[39]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3328,7 +3866,7 @@ func (x *CatalogService) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CatalogService.ProtoReflect.Descriptor instead.
 func (*CatalogService) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{39}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *CatalogService) GetProvider() string {
@@ -3417,7 +3955,7 @@ type ListCatalogRequest struct {
 
 func (x *ListCatalogRequest) Reset() {
 	*x = ListCatalogRequest{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[40]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3429,7 +3967,7 @@ func (x *ListCatalogRequest) String() string {
 func (*ListCatalogRequest) ProtoMessage() {}
 
 func (x *ListCatalogRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[40]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3442,7 +3980,7 @@ func (x *ListCatalogRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCatalogRequest.ProtoReflect.Descriptor instead.
 func (*ListCatalogRequest) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{40}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{49}
 }
 
 type ListCatalogResponse struct {
@@ -3454,7 +3992,7 @@ type ListCatalogResponse struct {
 
 func (x *ListCatalogResponse) Reset() {
 	*x = ListCatalogResponse{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[41]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3466,7 +4004,7 @@ func (x *ListCatalogResponse) String() string {
 func (*ListCatalogResponse) ProtoMessage() {}
 
 func (x *ListCatalogResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[41]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3479,7 +4017,7 @@ func (x *ListCatalogResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCatalogResponse.ProtoReflect.Descriptor instead.
 func (*ListCatalogResponse) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{41}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *ListCatalogResponse) GetServices() []*CatalogService {
@@ -3593,13 +4131,14 @@ const file_loadline_v1_simulation_proto_rawDesc = "" +
 	"\x18CreateSimulationResponse\x127\n" +
 	"\n" +
 	"simulation\x18\x01 \x01(\v2\x17.loadline.v1.SimulationR\n" +
-	"simulation\";\n" +
+	"simulation\"e\n" +
 	"\x14RunSimulationRequest\x12#\n" +
-	"\rsimulation_id\x18\x01 \x01(\tR\fsimulationId\"P\n" +
+	"\rsimulation_id\x18\x01 \x01(\tR\fsimulationId\x12(\n" +
+	"\x10wall_duration_ms\x18\x02 \x01(\x01R\x0ewallDurationMs\"P\n" +
 	"\x15RunSimulationResponse\x127\n" +
 	"\n" +
 	"simulation\x18\x01 \x01(\v2\x17.loadline.v1.SimulationR\n" +
-	"simulation\"\x80\x02\n" +
+	"simulation\"\xfa\x02\n" +
 	"\x10ProgressSnapshot\x12\x1e\n" +
 	"\vsim_time_ms\x18\x01 \x01(\x01R\tsimTimeMs\x12\x1c\n" +
 	"\tgenerated\x18\x02 \x01(\x04R\tgenerated\x12\x1c\n" +
@@ -3609,7 +4148,37 @@ const file_loadline_v1_simulation_proto_rawDesc = "" +
 	"\tin_flight\x18\x06 \x01(\x03R\binFlight\x12?\n" +
 	"\n" +
 	"components\x18\a \x03(\v2\x1f.loadline.v1.ComponentOccupancyR\n" +
-	"components\"\xcf\x01\n" +
+	"components\x12&\n" +
+	"\x0fwall_elapsed_ms\x18\b \x01(\x01R\rwallElapsedMs\x12)\n" +
+	"\x10events_processed\x18\t \x01(\x04R\x0feventsProcessed\x12%\n" +
+	"\x0eevents_pending\x18\n" +
+	" \x01(\x03R\reventsPending\"=\n" +
+	"\x16PauseSimulationRequest\x12#\n" +
+	"\rsimulation_id\x18\x01 \x01(\tR\fsimulationId\"n\n" +
+	"\x17PauseSimulationResponse\x12#\n" +
+	"\rsimulation_id\x18\x01 \x01(\tR\fsimulationId\x12.\n" +
+	"\x06status\x18\x02 \x01(\x0e2\x16.loadline.v1.RunStatusR\x06status\"h\n" +
+	"\x17ResumeSimulationRequest\x12#\n" +
+	"\rsimulation_id\x18\x01 \x01(\tR\fsimulationId\x12(\n" +
+	"\x10wall_duration_ms\x18\x02 \x01(\x01R\x0ewallDurationMs\"o\n" +
+	"\x18ResumeSimulationResponse\x12#\n" +
+	"\rsimulation_id\x18\x01 \x01(\tR\fsimulationId\x12.\n" +
+	"\x06status\x18\x02 \x01(\x0e2\x16.loadline.v1.RunStatusR\x06status\"<\n" +
+	"\x15StopSimulationRequest\x12#\n" +
+	"\rsimulation_id\x18\x01 \x01(\tR\fsimulationId\"m\n" +
+	"\x16StopSimulationResponse\x12#\n" +
+	"\rsimulation_id\x18\x01 \x01(\tR\fsimulationId\x12.\n" +
+	"\x06status\x18\x02 \x01(\x0e2\x16.loadline.v1.RunStatusR\x06status\"g\n" +
+	"\x16SetWallDurationRequest\x12#\n" +
+	"\rsimulation_id\x18\x01 \x01(\tR\fsimulationId\x12(\n" +
+	"\x10wall_duration_ms\x18\x02 \x01(\x01R\x0ewallDurationMs\"n\n" +
+	"\x17SetWallDurationResponse\x12#\n" +
+	"\rsimulation_id\x18\x01 \x01(\tR\fsimulationId\x12.\n" +
+	"\x06status\x18\x02 \x01(\x0e2\x16.loadline.v1.RunStatusR\x06status\"\x83\x01\n" +
+	"\fControlFrame\x12#\n" +
+	"\rsimulation_id\x18\x01 \x01(\tR\fsimulationId\x12.\n" +
+	"\x06status\x18\x02 \x01(\x0e2\x16.loadline.v1.RunStatusR\x06status\x12\x1e\n" +
+	"\vsim_time_ms\x18\x03 \x01(\x01R\tsimTimeMs\"\xcf\x01\n" +
 	"\x12ComponentOccupancy\x12!\n" +
 	"\fcomponent_id\x18\x01 \x01(\tR\vcomponentId\x12\x1f\n" +
 	"\vqueue_depth\x18\x02 \x01(\x05R\n" +
@@ -3626,11 +4195,12 @@ const file_loadline_v1_simulation_proto_rawDesc = "" +
 	"\x05error\x18\x03 \x01(\tR\x05error\x129\n" +
 	"\bprogress\x18\x04 \x01(\v2\x1d.loadline.v1.ProgressSnapshotR\bprogress\";\n" +
 	"\x14StreamMetricsRequest\x12#\n" +
-	"\rsimulation_id\x18\x01 \x01(\tR\fsimulationId\"\xd8\x01\n" +
+	"\rsimulation_id\x18\x01 \x01(\tR\fsimulationId\"\x8f\x02\n" +
 	"\x15StreamMetricsResponse\x12;\n" +
 	"\bprogress\x18\x01 \x01(\v2\x1d.loadline.v1.ProgressSnapshotH\x00R\bprogress\x12B\n" +
 	"\x06status\x18\x02 \x01(\v2(.loadline.v1.GetSimulationStatusResponseH\x00R\x06status\x125\n" +
-	"\aresults\x18\x03 \x01(\v2\x19.loadline.v1.FinalResultsH\x00R\aresultsB\a\n" +
+	"\aresults\x18\x03 \x01(\v2\x19.loadline.v1.FinalResultsH\x00R\aresults\x125\n" +
+	"\acontrol\x18\x04 \x01(\v2\x19.loadline.v1.ControlFrameH\x00R\acontrolB\a\n" +
 	"\x05event\"\xa5\x04\n" +
 	"\x10ComponentMetrics\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
@@ -3813,18 +4383,25 @@ const file_loadline_v1_simulation_proto_rawDesc = "" +
 	"\x12FAILURE_TYPE_CRASH\x10\x01\x12\"\n" +
 	"\x1eFAILURE_TYPE_INCREASED_LATENCY\x10\x02\x12%\n" +
 	"!FAILURE_TYPE_INCREASED_ERROR_RATE\x10\x03\x12 \n" +
-	"\x1cFAILURE_TYPE_NETWORK_FAILURE\x10\x04*\x88\x01\n" +
+	"\x1cFAILURE_TYPE_NETWORK_FAILURE\x10\x04*\xd0\x01\n" +
 	"\tRunStatus\x12\x1a\n" +
 	"\x16RUN_STATUS_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12RUN_STATUS_PENDING\x10\x01\x12\x16\n" +
 	"\x12RUN_STATUS_RUNNING\x10\x02\x12\x18\n" +
 	"\x14RUN_STATUS_COMPLETED\x10\x03\x12\x15\n" +
-	"\x11RUN_STATUS_FAILED\x10\x042\xb6\x06\n" +
+	"\x11RUN_STATUS_FAILED\x10\x04\x12\x15\n" +
+	"\x11RUN_STATUS_PAUSED\x10\x05\x12\x17\n" +
+	"\x13RUN_STATUS_STOPPING\x10\x06\x12\x16\n" +
+	"\x12RUN_STATUS_STOPPED\x10\a2\xae\t\n" +
 	"\x11SimulationService\x12_\n" +
 	"\x10CreateSimulation\x12$.loadline.v1.CreateSimulationRequest\x1a%.loadline.v1.CreateSimulationResponse\x12V\n" +
 	"\rRunSimulation\x12!.loadline.v1.RunSimulationRequest\x1a\".loadline.v1.RunSimulationResponse\x12h\n" +
 	"\x13GetSimulationStatus\x12'.loadline.v1.GetSimulationStatusRequest\x1a(.loadline.v1.GetSimulationStatusResponse\x12X\n" +
-	"\rStreamMetrics\x12!.loadline.v1.StreamMetricsRequest\x1a\".loadline.v1.StreamMetricsResponse0\x01\x12M\n" +
+	"\rStreamMetrics\x12!.loadline.v1.StreamMetricsRequest\x1a\".loadline.v1.StreamMetricsResponse0\x01\x12\\\n" +
+	"\x0fPauseSimulation\x12#.loadline.v1.PauseSimulationRequest\x1a$.loadline.v1.PauseSimulationResponse\x12_\n" +
+	"\x10ResumeSimulation\x12$.loadline.v1.ResumeSimulationRequest\x1a%.loadline.v1.ResumeSimulationResponse\x12Y\n" +
+	"\x0eStopSimulation\x12\".loadline.v1.StopSimulationRequest\x1a#.loadline.v1.StopSimulationResponse\x12\\\n" +
+	"\x0fSetWallDuration\x12#.loadline.v1.SetWallDurationRequest\x1a$.loadline.v1.SetWallDurationResponse\x12M\n" +
 	"\n" +
 	"GetResults\x12\x1e.loadline.v1.GetResultsRequest\x1a\x1f.loadline.v1.GetResultsResponse\x12S\n" +
 	"\fGetDiagnosis\x12 .loadline.v1.GetDiagnosisRequest\x1a!.loadline.v1.GetDiagnosisResponse\x12P\n" +
@@ -3845,7 +4422,7 @@ func file_loadline_v1_simulation_proto_rawDescGZIP() []byte {
 }
 
 var file_loadline_v1_simulation_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_loadline_v1_simulation_proto_msgTypes = make([]protoimpl.MessageInfo, 44)
+var file_loadline_v1_simulation_proto_msgTypes = make([]protoimpl.MessageInfo, 53)
 var file_loadline_v1_simulation_proto_goTypes = []any{
 	(ComponentKind)(0),                  // 0: loadline.v1.ComponentKind
 	(FailureType)(0),                    // 1: loadline.v1.FailureType
@@ -3865,39 +4442,48 @@ var file_loadline_v1_simulation_proto_goTypes = []any{
 	(*RunSimulationRequest)(nil),        // 15: loadline.v1.RunSimulationRequest
 	(*RunSimulationResponse)(nil),       // 16: loadline.v1.RunSimulationResponse
 	(*ProgressSnapshot)(nil),            // 17: loadline.v1.ProgressSnapshot
-	(*ComponentOccupancy)(nil),          // 18: loadline.v1.ComponentOccupancy
-	(*GetSimulationStatusRequest)(nil),  // 19: loadline.v1.GetSimulationStatusRequest
-	(*GetSimulationStatusResponse)(nil), // 20: loadline.v1.GetSimulationStatusResponse
-	(*StreamMetricsRequest)(nil),        // 21: loadline.v1.StreamMetricsRequest
-	(*StreamMetricsResponse)(nil),       // 22: loadline.v1.StreamMetricsResponse
-	(*ComponentMetrics)(nil),            // 23: loadline.v1.ComponentMetrics
-	(*FailureRecord)(nil),               // 24: loadline.v1.FailureRecord
-	(*SystemMetrics)(nil),               // 25: loadline.v1.SystemMetrics
-	(*RunSummary)(nil),                  // 26: loadline.v1.RunSummary
-	(*GetResultsRequest)(nil),           // 27: loadline.v1.GetResultsRequest
-	(*GetResultsResponse)(nil),          // 28: loadline.v1.GetResultsResponse
-	(*FinalResults)(nil),                // 29: loadline.v1.FinalResults
-	(*Bottleneck)(nil),                  // 30: loadline.v1.Bottleneck
-	(*Diagnosis)(nil),                   // 31: loadline.v1.Diagnosis
-	(*GetDiagnosisRequest)(nil),         // 32: loadline.v1.GetDiagnosisRequest
-	(*GetDiagnosisResponse)(nil),        // 33: loadline.v1.GetDiagnosisResponse
-	(*CapacityReport)(nil),              // 34: loadline.v1.CapacityReport
-	(*GetCapacityRequest)(nil),          // 35: loadline.v1.GetCapacityRequest
-	(*GetCapacityResponse)(nil),         // 36: loadline.v1.GetCapacityResponse
-	(*CostLineItem)(nil),                // 37: loadline.v1.CostLineItem
-	(*ComponentCost)(nil),               // 38: loadline.v1.ComponentCost
-	(*CostEstimate)(nil),                // 39: loadline.v1.CostEstimate
-	(*GetCostEstimateRequest)(nil),      // 40: loadline.v1.GetCostEstimateRequest
-	(*GetCostEstimateResponse)(nil),     // 41: loadline.v1.GetCostEstimateResponse
-	(*CatalogService)(nil),              // 42: loadline.v1.CatalogService
-	(*ListCatalogRequest)(nil),          // 43: loadline.v1.ListCatalogRequest
-	(*ListCatalogResponse)(nil),         // 44: loadline.v1.ListCatalogResponse
-	nil,                                 // 45: loadline.v1.ComponentSpec.ServiceTimeMillisEntry
-	nil,                                 // 46: loadline.v1.CostEstimate.ByCategoryEntry
+	(*PauseSimulationRequest)(nil),      // 18: loadline.v1.PauseSimulationRequest
+	(*PauseSimulationResponse)(nil),     // 19: loadline.v1.PauseSimulationResponse
+	(*ResumeSimulationRequest)(nil),     // 20: loadline.v1.ResumeSimulationRequest
+	(*ResumeSimulationResponse)(nil),    // 21: loadline.v1.ResumeSimulationResponse
+	(*StopSimulationRequest)(nil),       // 22: loadline.v1.StopSimulationRequest
+	(*StopSimulationResponse)(nil),      // 23: loadline.v1.StopSimulationResponse
+	(*SetWallDurationRequest)(nil),      // 24: loadline.v1.SetWallDurationRequest
+	(*SetWallDurationResponse)(nil),     // 25: loadline.v1.SetWallDurationResponse
+	(*ControlFrame)(nil),                // 26: loadline.v1.ControlFrame
+	(*ComponentOccupancy)(nil),          // 27: loadline.v1.ComponentOccupancy
+	(*GetSimulationStatusRequest)(nil),  // 28: loadline.v1.GetSimulationStatusRequest
+	(*GetSimulationStatusResponse)(nil), // 29: loadline.v1.GetSimulationStatusResponse
+	(*StreamMetricsRequest)(nil),        // 30: loadline.v1.StreamMetricsRequest
+	(*StreamMetricsResponse)(nil),       // 31: loadline.v1.StreamMetricsResponse
+	(*ComponentMetrics)(nil),            // 32: loadline.v1.ComponentMetrics
+	(*FailureRecord)(nil),               // 33: loadline.v1.FailureRecord
+	(*SystemMetrics)(nil),               // 34: loadline.v1.SystemMetrics
+	(*RunSummary)(nil),                  // 35: loadline.v1.RunSummary
+	(*GetResultsRequest)(nil),           // 36: loadline.v1.GetResultsRequest
+	(*GetResultsResponse)(nil),          // 37: loadline.v1.GetResultsResponse
+	(*FinalResults)(nil),                // 38: loadline.v1.FinalResults
+	(*Bottleneck)(nil),                  // 39: loadline.v1.Bottleneck
+	(*Diagnosis)(nil),                   // 40: loadline.v1.Diagnosis
+	(*GetDiagnosisRequest)(nil),         // 41: loadline.v1.GetDiagnosisRequest
+	(*GetDiagnosisResponse)(nil),        // 42: loadline.v1.GetDiagnosisResponse
+	(*CapacityReport)(nil),              // 43: loadline.v1.CapacityReport
+	(*GetCapacityRequest)(nil),          // 44: loadline.v1.GetCapacityRequest
+	(*GetCapacityResponse)(nil),         // 45: loadline.v1.GetCapacityResponse
+	(*CostLineItem)(nil),                // 46: loadline.v1.CostLineItem
+	(*ComponentCost)(nil),               // 47: loadline.v1.ComponentCost
+	(*CostEstimate)(nil),                // 48: loadline.v1.CostEstimate
+	(*GetCostEstimateRequest)(nil),      // 49: loadline.v1.GetCostEstimateRequest
+	(*GetCostEstimateResponse)(nil),     // 50: loadline.v1.GetCostEstimateResponse
+	(*CatalogService)(nil),              // 51: loadline.v1.CatalogService
+	(*ListCatalogRequest)(nil),          // 52: loadline.v1.ListCatalogRequest
+	(*ListCatalogResponse)(nil),         // 53: loadline.v1.ListCatalogResponse
+	nil,                                 // 54: loadline.v1.ComponentSpec.ServiceTimeMillisEntry
+	nil,                                 // 55: loadline.v1.CostEstimate.ByCategoryEntry
 }
 var file_loadline_v1_simulation_proto_depIdxs = []int32{
 	0,  // 0: loadline.v1.ComponentSpec.kind:type_name -> loadline.v1.ComponentKind
-	45, // 1: loadline.v1.ComponentSpec.service_time_millis:type_name -> loadline.v1.ComponentSpec.ServiceTimeMillisEntry
+	54, // 1: loadline.v1.ComponentSpec.service_time_millis:type_name -> loadline.v1.ComponentSpec.ServiceTimeMillisEntry
 	4,  // 2: loadline.v1.ComponentSpec.config:type_name -> loadline.v1.ProviderConfig
 	3,  // 3: loadline.v1.Architecture.components:type_name -> loadline.v1.ComponentSpec
 	5,  // 4: loadline.v1.Architecture.links:type_name -> loadline.v1.Link
@@ -3912,52 +4498,66 @@ var file_loadline_v1_simulation_proto_depIdxs = []int32{
 	11, // 13: loadline.v1.CreateSimulationRequest.options:type_name -> loadline.v1.SimulationOptions
 	12, // 14: loadline.v1.CreateSimulationResponse.simulation:type_name -> loadline.v1.Simulation
 	12, // 15: loadline.v1.RunSimulationResponse.simulation:type_name -> loadline.v1.Simulation
-	18, // 16: loadline.v1.ProgressSnapshot.components:type_name -> loadline.v1.ComponentOccupancy
-	2,  // 17: loadline.v1.GetSimulationStatusResponse.status:type_name -> loadline.v1.RunStatus
-	17, // 18: loadline.v1.GetSimulationStatusResponse.progress:type_name -> loadline.v1.ProgressSnapshot
-	17, // 19: loadline.v1.StreamMetricsResponse.progress:type_name -> loadline.v1.ProgressSnapshot
-	20, // 20: loadline.v1.StreamMetricsResponse.status:type_name -> loadline.v1.GetSimulationStatusResponse
-	29, // 21: loadline.v1.StreamMetricsResponse.results:type_name -> loadline.v1.FinalResults
-	23, // 22: loadline.v1.SystemMetrics.components:type_name -> loadline.v1.ComponentMetrics
-	8,  // 23: loadline.v1.GetResultsResponse.plan:type_name -> loadline.v1.LoadPlan
-	25, // 24: loadline.v1.GetResultsResponse.metrics:type_name -> loadline.v1.SystemMetrics
-	24, // 25: loadline.v1.GetResultsResponse.failures:type_name -> loadline.v1.FailureRecord
-	26, // 26: loadline.v1.GetResultsResponse.summary:type_name -> loadline.v1.RunSummary
-	8,  // 27: loadline.v1.FinalResults.plan:type_name -> loadline.v1.LoadPlan
-	25, // 28: loadline.v1.FinalResults.metrics:type_name -> loadline.v1.SystemMetrics
-	24, // 29: loadline.v1.FinalResults.failures:type_name -> loadline.v1.FailureRecord
-	26, // 30: loadline.v1.FinalResults.summary:type_name -> loadline.v1.RunSummary
-	30, // 31: loadline.v1.Diagnosis.bottlenecks:type_name -> loadline.v1.Bottleneck
-	31, // 32: loadline.v1.GetDiagnosisResponse.diagnosis:type_name -> loadline.v1.Diagnosis
-	34, // 33: loadline.v1.GetCapacityResponse.reports:type_name -> loadline.v1.CapacityReport
-	37, // 34: loadline.v1.ComponentCost.line_items:type_name -> loadline.v1.CostLineItem
-	46, // 35: loadline.v1.CostEstimate.by_category:type_name -> loadline.v1.CostEstimate.ByCategoryEntry
-	38, // 36: loadline.v1.CostEstimate.components:type_name -> loadline.v1.ComponentCost
-	39, // 37: loadline.v1.GetCostEstimateResponse.estimate:type_name -> loadline.v1.CostEstimate
-	42, // 38: loadline.v1.ListCatalogResponse.services:type_name -> loadline.v1.CatalogService
-	13, // 39: loadline.v1.SimulationService.CreateSimulation:input_type -> loadline.v1.CreateSimulationRequest
-	15, // 40: loadline.v1.SimulationService.RunSimulation:input_type -> loadline.v1.RunSimulationRequest
-	19, // 41: loadline.v1.SimulationService.GetSimulationStatus:input_type -> loadline.v1.GetSimulationStatusRequest
-	21, // 42: loadline.v1.SimulationService.StreamMetrics:input_type -> loadline.v1.StreamMetricsRequest
-	27, // 43: loadline.v1.SimulationService.GetResults:input_type -> loadline.v1.GetResultsRequest
-	32, // 44: loadline.v1.SimulationService.GetDiagnosis:input_type -> loadline.v1.GetDiagnosisRequest
-	35, // 45: loadline.v1.SimulationService.GetCapacity:input_type -> loadline.v1.GetCapacityRequest
-	40, // 46: loadline.v1.SimulationService.GetCostEstimate:input_type -> loadline.v1.GetCostEstimateRequest
-	43, // 47: loadline.v1.SimulationService.ListCatalog:input_type -> loadline.v1.ListCatalogRequest
-	14, // 48: loadline.v1.SimulationService.CreateSimulation:output_type -> loadline.v1.CreateSimulationResponse
-	16, // 49: loadline.v1.SimulationService.RunSimulation:output_type -> loadline.v1.RunSimulationResponse
-	20, // 50: loadline.v1.SimulationService.GetSimulationStatus:output_type -> loadline.v1.GetSimulationStatusResponse
-	22, // 51: loadline.v1.SimulationService.StreamMetrics:output_type -> loadline.v1.StreamMetricsResponse
-	28, // 52: loadline.v1.SimulationService.GetResults:output_type -> loadline.v1.GetResultsResponse
-	33, // 53: loadline.v1.SimulationService.GetDiagnosis:output_type -> loadline.v1.GetDiagnosisResponse
-	36, // 54: loadline.v1.SimulationService.GetCapacity:output_type -> loadline.v1.GetCapacityResponse
-	41, // 55: loadline.v1.SimulationService.GetCostEstimate:output_type -> loadline.v1.GetCostEstimateResponse
-	44, // 56: loadline.v1.SimulationService.ListCatalog:output_type -> loadline.v1.ListCatalogResponse
-	48, // [48:57] is the sub-list for method output_type
-	39, // [39:48] is the sub-list for method input_type
-	39, // [39:39] is the sub-list for extension type_name
-	39, // [39:39] is the sub-list for extension extendee
-	0,  // [0:39] is the sub-list for field type_name
+	27, // 16: loadline.v1.ProgressSnapshot.components:type_name -> loadline.v1.ComponentOccupancy
+	2,  // 17: loadline.v1.PauseSimulationResponse.status:type_name -> loadline.v1.RunStatus
+	2,  // 18: loadline.v1.ResumeSimulationResponse.status:type_name -> loadline.v1.RunStatus
+	2,  // 19: loadline.v1.StopSimulationResponse.status:type_name -> loadline.v1.RunStatus
+	2,  // 20: loadline.v1.SetWallDurationResponse.status:type_name -> loadline.v1.RunStatus
+	2,  // 21: loadline.v1.ControlFrame.status:type_name -> loadline.v1.RunStatus
+	2,  // 22: loadline.v1.GetSimulationStatusResponse.status:type_name -> loadline.v1.RunStatus
+	17, // 23: loadline.v1.GetSimulationStatusResponse.progress:type_name -> loadline.v1.ProgressSnapshot
+	17, // 24: loadline.v1.StreamMetricsResponse.progress:type_name -> loadline.v1.ProgressSnapshot
+	29, // 25: loadline.v1.StreamMetricsResponse.status:type_name -> loadline.v1.GetSimulationStatusResponse
+	38, // 26: loadline.v1.StreamMetricsResponse.results:type_name -> loadline.v1.FinalResults
+	26, // 27: loadline.v1.StreamMetricsResponse.control:type_name -> loadline.v1.ControlFrame
+	32, // 28: loadline.v1.SystemMetrics.components:type_name -> loadline.v1.ComponentMetrics
+	8,  // 29: loadline.v1.GetResultsResponse.plan:type_name -> loadline.v1.LoadPlan
+	34, // 30: loadline.v1.GetResultsResponse.metrics:type_name -> loadline.v1.SystemMetrics
+	33, // 31: loadline.v1.GetResultsResponse.failures:type_name -> loadline.v1.FailureRecord
+	35, // 32: loadline.v1.GetResultsResponse.summary:type_name -> loadline.v1.RunSummary
+	8,  // 33: loadline.v1.FinalResults.plan:type_name -> loadline.v1.LoadPlan
+	34, // 34: loadline.v1.FinalResults.metrics:type_name -> loadline.v1.SystemMetrics
+	33, // 35: loadline.v1.FinalResults.failures:type_name -> loadline.v1.FailureRecord
+	35, // 36: loadline.v1.FinalResults.summary:type_name -> loadline.v1.RunSummary
+	39, // 37: loadline.v1.Diagnosis.bottlenecks:type_name -> loadline.v1.Bottleneck
+	40, // 38: loadline.v1.GetDiagnosisResponse.diagnosis:type_name -> loadline.v1.Diagnosis
+	43, // 39: loadline.v1.GetCapacityResponse.reports:type_name -> loadline.v1.CapacityReport
+	46, // 40: loadline.v1.ComponentCost.line_items:type_name -> loadline.v1.CostLineItem
+	55, // 41: loadline.v1.CostEstimate.by_category:type_name -> loadline.v1.CostEstimate.ByCategoryEntry
+	47, // 42: loadline.v1.CostEstimate.components:type_name -> loadline.v1.ComponentCost
+	48, // 43: loadline.v1.GetCostEstimateResponse.estimate:type_name -> loadline.v1.CostEstimate
+	51, // 44: loadline.v1.ListCatalogResponse.services:type_name -> loadline.v1.CatalogService
+	13, // 45: loadline.v1.SimulationService.CreateSimulation:input_type -> loadline.v1.CreateSimulationRequest
+	15, // 46: loadline.v1.SimulationService.RunSimulation:input_type -> loadline.v1.RunSimulationRequest
+	28, // 47: loadline.v1.SimulationService.GetSimulationStatus:input_type -> loadline.v1.GetSimulationStatusRequest
+	30, // 48: loadline.v1.SimulationService.StreamMetrics:input_type -> loadline.v1.StreamMetricsRequest
+	18, // 49: loadline.v1.SimulationService.PauseSimulation:input_type -> loadline.v1.PauseSimulationRequest
+	20, // 50: loadline.v1.SimulationService.ResumeSimulation:input_type -> loadline.v1.ResumeSimulationRequest
+	22, // 51: loadline.v1.SimulationService.StopSimulation:input_type -> loadline.v1.StopSimulationRequest
+	24, // 52: loadline.v1.SimulationService.SetWallDuration:input_type -> loadline.v1.SetWallDurationRequest
+	36, // 53: loadline.v1.SimulationService.GetResults:input_type -> loadline.v1.GetResultsRequest
+	41, // 54: loadline.v1.SimulationService.GetDiagnosis:input_type -> loadline.v1.GetDiagnosisRequest
+	44, // 55: loadline.v1.SimulationService.GetCapacity:input_type -> loadline.v1.GetCapacityRequest
+	49, // 56: loadline.v1.SimulationService.GetCostEstimate:input_type -> loadline.v1.GetCostEstimateRequest
+	52, // 57: loadline.v1.SimulationService.ListCatalog:input_type -> loadline.v1.ListCatalogRequest
+	14, // 58: loadline.v1.SimulationService.CreateSimulation:output_type -> loadline.v1.CreateSimulationResponse
+	16, // 59: loadline.v1.SimulationService.RunSimulation:output_type -> loadline.v1.RunSimulationResponse
+	29, // 60: loadline.v1.SimulationService.GetSimulationStatus:output_type -> loadline.v1.GetSimulationStatusResponse
+	31, // 61: loadline.v1.SimulationService.StreamMetrics:output_type -> loadline.v1.StreamMetricsResponse
+	19, // 62: loadline.v1.SimulationService.PauseSimulation:output_type -> loadline.v1.PauseSimulationResponse
+	21, // 63: loadline.v1.SimulationService.ResumeSimulation:output_type -> loadline.v1.ResumeSimulationResponse
+	23, // 64: loadline.v1.SimulationService.StopSimulation:output_type -> loadline.v1.StopSimulationResponse
+	25, // 65: loadline.v1.SimulationService.SetWallDuration:output_type -> loadline.v1.SetWallDurationResponse
+	37, // 66: loadline.v1.SimulationService.GetResults:output_type -> loadline.v1.GetResultsResponse
+	42, // 67: loadline.v1.SimulationService.GetDiagnosis:output_type -> loadline.v1.GetDiagnosisResponse
+	45, // 68: loadline.v1.SimulationService.GetCapacity:output_type -> loadline.v1.GetCapacityResponse
+	50, // 69: loadline.v1.SimulationService.GetCostEstimate:output_type -> loadline.v1.GetCostEstimateResponse
+	53, // 70: loadline.v1.SimulationService.ListCatalog:output_type -> loadline.v1.ListCatalogResponse
+	58, // [58:71] is the sub-list for method output_type
+	45, // [45:58] is the sub-list for method input_type
+	45, // [45:45] is the sub-list for extension type_name
+	45, // [45:45] is the sub-list for extension extendee
+	0,  // [0:45] is the sub-list for field type_name
 }
 
 func init() { file_loadline_v1_simulation_proto_init() }
@@ -3965,10 +4565,11 @@ func file_loadline_v1_simulation_proto_init() {
 	if File_loadline_v1_simulation_proto != nil {
 		return
 	}
-	file_loadline_v1_simulation_proto_msgTypes[19].OneofWrappers = []any{
+	file_loadline_v1_simulation_proto_msgTypes[28].OneofWrappers = []any{
 		(*StreamMetricsResponse_Progress)(nil),
 		(*StreamMetricsResponse_Status)(nil),
 		(*StreamMetricsResponse_Results)(nil),
+		(*StreamMetricsResponse_Control)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -3976,7 +4577,7 @@ func file_loadline_v1_simulation_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_loadline_v1_simulation_proto_rawDesc), len(file_loadline_v1_simulation_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   44,
+			NumMessages:   53,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

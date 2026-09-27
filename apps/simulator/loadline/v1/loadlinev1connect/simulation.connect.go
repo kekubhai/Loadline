@@ -45,6 +45,18 @@ const (
 	// SimulationServiceStreamMetricsProcedure is the fully-qualified name of the SimulationService's
 	// StreamMetrics RPC.
 	SimulationServiceStreamMetricsProcedure = "/loadline.v1.SimulationService/StreamMetrics"
+	// SimulationServicePauseSimulationProcedure is the fully-qualified name of the SimulationService's
+	// PauseSimulation RPC.
+	SimulationServicePauseSimulationProcedure = "/loadline.v1.SimulationService/PauseSimulation"
+	// SimulationServiceResumeSimulationProcedure is the fully-qualified name of the SimulationService's
+	// ResumeSimulation RPC.
+	SimulationServiceResumeSimulationProcedure = "/loadline.v1.SimulationService/ResumeSimulation"
+	// SimulationServiceStopSimulationProcedure is the fully-qualified name of the SimulationService's
+	// StopSimulation RPC.
+	SimulationServiceStopSimulationProcedure = "/loadline.v1.SimulationService/StopSimulation"
+	// SimulationServiceSetWallDurationProcedure is the fully-qualified name of the SimulationService's
+	// SetWallDuration RPC.
+	SimulationServiceSetWallDurationProcedure = "/loadline.v1.SimulationService/SetWallDuration"
 	// SimulationServiceGetResultsProcedure is the fully-qualified name of the SimulationService's
 	// GetResults RPC.
 	SimulationServiceGetResultsProcedure = "/loadline.v1.SimulationService/GetResults"
@@ -71,8 +83,23 @@ type SimulationServiceClient interface {
 	// Poll a simulation's status and latest progress snapshot.
 	GetSimulationStatus(context.Context, *connect.Request[v1.GetSimulationStatusRequest]) (*connect.Response[v1.GetSimulationStatusResponse], error)
 	// Stream progress snapshots while running, then status and final
-	// results; the stream ends after the terminal frame.
+	// results; the stream ends after the terminal frame. Control
+	// transitions (pause/resume/stop) are also broadcast on this stream.
 	StreamMetrics(context.Context, *connect.Request[v1.StreamMetricsRequest]) (*connect.ServerStreamForClient[v1.StreamMetricsResponse], error)
+	// Pause a RUNNING simulation at the current simulated instant. The
+	// engine finishes the in-flight event, then idles without advancing
+	// simulated time. Final metrics remain available on completion.
+	PauseSimulation(context.Context, *connect.Request[v1.PauseSimulationRequest]) (*connect.Response[v1.PauseSimulationResponse], error)
+	// Resume a PAUSED simulation, optionally re-targeting the wall-clock
+	// pacing in the same call.
+	ResumeSimulation(context.Context, *connect.Request[v1.ResumeSimulationRequest]) (*connect.Response[v1.ResumeSimulationResponse], error)
+	// Stop a RUNNING or PAUSED simulation before its horizon. The engine
+	// drains the in-flight event and publishes partial results (marked
+	// stopped, not completed); they stay queryable.
+	StopSimulation(context.Context, *connect.Request[v1.StopSimulationRequest]) (*connect.Response[v1.StopSimulationResponse], error)
+	// SetWallDuration re-targets the wall-clock pacing of a live run
+	// without pausing it. 0 restores the default 1s-of-sim-per-second.
+	SetWallDuration(context.Context, *connect.Request[v1.SetWallDurationRequest]) (*connect.Response[v1.SetWallDurationResponse], error)
 	// Fetch final results of a completed run.
 	GetResults(context.Context, *connect.Request[v1.GetResultsRequest]) (*connect.Response[v1.GetResultsResponse], error)
 	// Fetch the bottleneck diagnosis (optionally vs a baseline run).
@@ -120,6 +147,30 @@ func NewSimulationServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			connect.WithSchema(simulationServiceMethods.ByName("StreamMetrics")),
 			connect.WithClientOptions(opts...),
 		),
+		pauseSimulation: connect.NewClient[v1.PauseSimulationRequest, v1.PauseSimulationResponse](
+			httpClient,
+			baseURL+SimulationServicePauseSimulationProcedure,
+			connect.WithSchema(simulationServiceMethods.ByName("PauseSimulation")),
+			connect.WithClientOptions(opts...),
+		),
+		resumeSimulation: connect.NewClient[v1.ResumeSimulationRequest, v1.ResumeSimulationResponse](
+			httpClient,
+			baseURL+SimulationServiceResumeSimulationProcedure,
+			connect.WithSchema(simulationServiceMethods.ByName("ResumeSimulation")),
+			connect.WithClientOptions(opts...),
+		),
+		stopSimulation: connect.NewClient[v1.StopSimulationRequest, v1.StopSimulationResponse](
+			httpClient,
+			baseURL+SimulationServiceStopSimulationProcedure,
+			connect.WithSchema(simulationServiceMethods.ByName("StopSimulation")),
+			connect.WithClientOptions(opts...),
+		),
+		setWallDuration: connect.NewClient[v1.SetWallDurationRequest, v1.SetWallDurationResponse](
+			httpClient,
+			baseURL+SimulationServiceSetWallDurationProcedure,
+			connect.WithSchema(simulationServiceMethods.ByName("SetWallDuration")),
+			connect.WithClientOptions(opts...),
+		),
 		getResults: connect.NewClient[v1.GetResultsRequest, v1.GetResultsResponse](
 			httpClient,
 			baseURL+SimulationServiceGetResultsProcedure,
@@ -159,6 +210,10 @@ type simulationServiceClient struct {
 	runSimulation       *connect.Client[v1.RunSimulationRequest, v1.RunSimulationResponse]
 	getSimulationStatus *connect.Client[v1.GetSimulationStatusRequest, v1.GetSimulationStatusResponse]
 	streamMetrics       *connect.Client[v1.StreamMetricsRequest, v1.StreamMetricsResponse]
+	pauseSimulation     *connect.Client[v1.PauseSimulationRequest, v1.PauseSimulationResponse]
+	resumeSimulation    *connect.Client[v1.ResumeSimulationRequest, v1.ResumeSimulationResponse]
+	stopSimulation      *connect.Client[v1.StopSimulationRequest, v1.StopSimulationResponse]
+	setWallDuration     *connect.Client[v1.SetWallDurationRequest, v1.SetWallDurationResponse]
 	getResults          *connect.Client[v1.GetResultsRequest, v1.GetResultsResponse]
 	getDiagnosis        *connect.Client[v1.GetDiagnosisRequest, v1.GetDiagnosisResponse]
 	getCapacity         *connect.Client[v1.GetCapacityRequest, v1.GetCapacityResponse]
@@ -184,6 +239,26 @@ func (c *simulationServiceClient) GetSimulationStatus(ctx context.Context, req *
 // StreamMetrics calls loadline.v1.SimulationService.StreamMetrics.
 func (c *simulationServiceClient) StreamMetrics(ctx context.Context, req *connect.Request[v1.StreamMetricsRequest]) (*connect.ServerStreamForClient[v1.StreamMetricsResponse], error) {
 	return c.streamMetrics.CallServerStream(ctx, req)
+}
+
+// PauseSimulation calls loadline.v1.SimulationService.PauseSimulation.
+func (c *simulationServiceClient) PauseSimulation(ctx context.Context, req *connect.Request[v1.PauseSimulationRequest]) (*connect.Response[v1.PauseSimulationResponse], error) {
+	return c.pauseSimulation.CallUnary(ctx, req)
+}
+
+// ResumeSimulation calls loadline.v1.SimulationService.ResumeSimulation.
+func (c *simulationServiceClient) ResumeSimulation(ctx context.Context, req *connect.Request[v1.ResumeSimulationRequest]) (*connect.Response[v1.ResumeSimulationResponse], error) {
+	return c.resumeSimulation.CallUnary(ctx, req)
+}
+
+// StopSimulation calls loadline.v1.SimulationService.StopSimulation.
+func (c *simulationServiceClient) StopSimulation(ctx context.Context, req *connect.Request[v1.StopSimulationRequest]) (*connect.Response[v1.StopSimulationResponse], error) {
+	return c.stopSimulation.CallUnary(ctx, req)
+}
+
+// SetWallDuration calls loadline.v1.SimulationService.SetWallDuration.
+func (c *simulationServiceClient) SetWallDuration(ctx context.Context, req *connect.Request[v1.SetWallDurationRequest]) (*connect.Response[v1.SetWallDurationResponse], error) {
+	return c.setWallDuration.CallUnary(ctx, req)
 }
 
 // GetResults calls loadline.v1.SimulationService.GetResults.
@@ -220,8 +295,23 @@ type SimulationServiceHandler interface {
 	// Poll a simulation's status and latest progress snapshot.
 	GetSimulationStatus(context.Context, *connect.Request[v1.GetSimulationStatusRequest]) (*connect.Response[v1.GetSimulationStatusResponse], error)
 	// Stream progress snapshots while running, then status and final
-	// results; the stream ends after the terminal frame.
+	// results; the stream ends after the terminal frame. Control
+	// transitions (pause/resume/stop) are also broadcast on this stream.
 	StreamMetrics(context.Context, *connect.Request[v1.StreamMetricsRequest], *connect.ServerStream[v1.StreamMetricsResponse]) error
+	// Pause a RUNNING simulation at the current simulated instant. The
+	// engine finishes the in-flight event, then idles without advancing
+	// simulated time. Final metrics remain available on completion.
+	PauseSimulation(context.Context, *connect.Request[v1.PauseSimulationRequest]) (*connect.Response[v1.PauseSimulationResponse], error)
+	// Resume a PAUSED simulation, optionally re-targeting the wall-clock
+	// pacing in the same call.
+	ResumeSimulation(context.Context, *connect.Request[v1.ResumeSimulationRequest]) (*connect.Response[v1.ResumeSimulationResponse], error)
+	// Stop a RUNNING or PAUSED simulation before its horizon. The engine
+	// drains the in-flight event and publishes partial results (marked
+	// stopped, not completed); they stay queryable.
+	StopSimulation(context.Context, *connect.Request[v1.StopSimulationRequest]) (*connect.Response[v1.StopSimulationResponse], error)
+	// SetWallDuration re-targets the wall-clock pacing of a live run
+	// without pausing it. 0 restores the default 1s-of-sim-per-second.
+	SetWallDuration(context.Context, *connect.Request[v1.SetWallDurationRequest]) (*connect.Response[v1.SetWallDurationResponse], error)
 	// Fetch final results of a completed run.
 	GetResults(context.Context, *connect.Request[v1.GetResultsRequest]) (*connect.Response[v1.GetResultsResponse], error)
 	// Fetch the bottleneck diagnosis (optionally vs a baseline run).
@@ -265,6 +355,30 @@ func NewSimulationServiceHandler(svc SimulationServiceHandler, opts ...connect.H
 		connect.WithSchema(simulationServiceMethods.ByName("StreamMetrics")),
 		connect.WithHandlerOptions(opts...),
 	)
+	simulationServicePauseSimulationHandler := connect.NewUnaryHandler(
+		SimulationServicePauseSimulationProcedure,
+		svc.PauseSimulation,
+		connect.WithSchema(simulationServiceMethods.ByName("PauseSimulation")),
+		connect.WithHandlerOptions(opts...),
+	)
+	simulationServiceResumeSimulationHandler := connect.NewUnaryHandler(
+		SimulationServiceResumeSimulationProcedure,
+		svc.ResumeSimulation,
+		connect.WithSchema(simulationServiceMethods.ByName("ResumeSimulation")),
+		connect.WithHandlerOptions(opts...),
+	)
+	simulationServiceStopSimulationHandler := connect.NewUnaryHandler(
+		SimulationServiceStopSimulationProcedure,
+		svc.StopSimulation,
+		connect.WithSchema(simulationServiceMethods.ByName("StopSimulation")),
+		connect.WithHandlerOptions(opts...),
+	)
+	simulationServiceSetWallDurationHandler := connect.NewUnaryHandler(
+		SimulationServiceSetWallDurationProcedure,
+		svc.SetWallDuration,
+		connect.WithSchema(simulationServiceMethods.ByName("SetWallDuration")),
+		connect.WithHandlerOptions(opts...),
+	)
 	simulationServiceGetResultsHandler := connect.NewUnaryHandler(
 		SimulationServiceGetResultsProcedure,
 		svc.GetResults,
@@ -305,6 +419,14 @@ func NewSimulationServiceHandler(svc SimulationServiceHandler, opts ...connect.H
 			simulationServiceGetSimulationStatusHandler.ServeHTTP(w, r)
 		case SimulationServiceStreamMetricsProcedure:
 			simulationServiceStreamMetricsHandler.ServeHTTP(w, r)
+		case SimulationServicePauseSimulationProcedure:
+			simulationServicePauseSimulationHandler.ServeHTTP(w, r)
+		case SimulationServiceResumeSimulationProcedure:
+			simulationServiceResumeSimulationHandler.ServeHTTP(w, r)
+		case SimulationServiceStopSimulationProcedure:
+			simulationServiceStopSimulationHandler.ServeHTTP(w, r)
+		case SimulationServiceSetWallDurationProcedure:
+			simulationServiceSetWallDurationHandler.ServeHTTP(w, r)
 		case SimulationServiceGetResultsProcedure:
 			simulationServiceGetResultsHandler.ServeHTTP(w, r)
 		case SimulationServiceGetDiagnosisProcedure:
@@ -338,6 +460,22 @@ func (UnimplementedSimulationServiceHandler) GetSimulationStatus(context.Context
 
 func (UnimplementedSimulationServiceHandler) StreamMetrics(context.Context, *connect.Request[v1.StreamMetricsRequest], *connect.ServerStream[v1.StreamMetricsResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("loadline.v1.SimulationService.StreamMetrics is not implemented"))
+}
+
+func (UnimplementedSimulationServiceHandler) PauseSimulation(context.Context, *connect.Request[v1.PauseSimulationRequest]) (*connect.Response[v1.PauseSimulationResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("loadline.v1.SimulationService.PauseSimulation is not implemented"))
+}
+
+func (UnimplementedSimulationServiceHandler) ResumeSimulation(context.Context, *connect.Request[v1.ResumeSimulationRequest]) (*connect.Response[v1.ResumeSimulationResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("loadline.v1.SimulationService.ResumeSimulation is not implemented"))
+}
+
+func (UnimplementedSimulationServiceHandler) StopSimulation(context.Context, *connect.Request[v1.StopSimulationRequest]) (*connect.Response[v1.StopSimulationResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("loadline.v1.SimulationService.StopSimulation is not implemented"))
+}
+
+func (UnimplementedSimulationServiceHandler) SetWallDuration(context.Context, *connect.Request[v1.SetWallDurationRequest]) (*connect.Response[v1.SetWallDurationResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("loadline.v1.SimulationService.SetWallDuration is not implemented"))
 }
 
 func (UnimplementedSimulationServiceHandler) GetResults(context.Context, *connect.Request[v1.GetResultsRequest]) (*connect.Response[v1.GetResultsResponse], error) {

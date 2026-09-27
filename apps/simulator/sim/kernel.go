@@ -3,6 +3,7 @@ package sim
 import (
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/kekubhai/Loadline/apps/simulator/engine"
 	"github.com/kekubhai/Loadline/apps/simulator/workload"
@@ -217,6 +218,13 @@ type Kernel struct {
 
 	progress ProgressHook
 
+	// Telemetry for the progress hook: wall-clock start of the run and
+	// live engine counters, plumbed in by Simulate. Observational only —
+	// the kernel never makes decisions from these.
+	startedWall     time.Time
+	eventsProcessed func() uint64
+	pendingEvents   func() int
+
 	retryOn map[string]bool
 
 	latencies []float64
@@ -247,18 +255,21 @@ type windowSample struct {
 // Validate the architecture first.
 func newKernel(arch Architecture, plan workload.Plan, opts Options) *Kernel {
 	k := &Kernel{
-		arch:     arch,
-		plan:     plan,
-		opts:     opts,
-		runtimes: make(map[string]*ComponentRuntime, len(arch.Components)),
-		outgoing: make(map[string][]Link, len(arch.Components)),
-		ids:      workload.NewIDAllocator(),
-		splitter: workload.NewSplitter(opts.Seed^0xA11CE, plan.ReadFraction),
-		arrival:  workload.NewArrivalClock(opts.Seed^0xB0B, plan.MeanInterArrivalMillis),
-		failRNG:  engine.NewRNG(opts.Seed ^ 0xF41A11),
-		retryOn:  make(map[string]bool, len(opts.RetryOn)),
-		windowMS: float64(opts.TrackWindows),
-		progress: opts.Progress,
+		arch:            arch,
+		plan:            plan,
+		opts:            opts,
+		runtimes:        make(map[string]*ComponentRuntime, len(arch.Components)),
+		outgoing:        make(map[string][]Link, len(arch.Components)),
+		ids:             workload.NewIDAllocator(),
+		splitter:        workload.NewSplitter(opts.Seed^0xA11CE, plan.ReadFraction),
+		arrival:         workload.NewArrivalClock(opts.Seed^0xB0B, plan.MeanInterArrivalMillis),
+		failRNG:         engine.NewRNG(opts.Seed ^ 0xF41A11),
+		retryOn:         make(map[string]bool, len(opts.RetryOn)),
+		windowMS:        float64(opts.TrackWindows),
+		progress:        opts.Progress,
+		startedWall:     time.Now(),
+		eventsProcessed: func() uint64 { return 0 },
+		pendingEvents:   func() int { return 0 },
 	}
 	for _, id := range opts.RetryOn {
 		k.retryOn[id] = true
@@ -359,12 +370,36 @@ func Simulate(arch Architecture, spec workload.Spec, opts Options) (*RunResult, 
 		})
 	}
 
+	// Telemetry plumbing: let the kernel observe the engine's counters
+	// for the progress hook. These closures read state after the tick
+	// boundary of each event, so the values they report are stable.
+	k.eventsProcessed = func() uint64 { return runner.Processed() }
+	k.pendingEvents = func() int { return runner.Pending() }
+
 	events := runner.Run()
 	return &RunResult{
-		Plan:    plan,
-		Events:  *events,
-		Metrics: k.snapshot(opts.DurationMS),
+		Plan:   plan,
+		Events: *events,
+		// DurationMS reflects the simulated span actually measured: the
+		// configured horizon normally, but a stopped run measures only
+		// the span it processed so rates stay honest (requests ÷ elapsed
+		// sim time, not requests ÷ horizon).
+		Metrics: k.snapshot(durationOr(events, opts.DurationMS)),
 	}, nil
+}
+
+// durationOr returns the simulated span the run actually covered: the
+// final event timestamp when the run stopped early, else the configured
+// duration. Floor of 1ms keeps rates finite.
+func durationOr(events *engine.Results, configured float64) float64 {
+	if events != nil && events.StopReason == engine.StopStopped && events.FinalTime > 0 {
+		ms := float64(events.FinalTime) / 1e6
+		if ms > 1 {
+			return ms
+		}
+		return 1
+	}
+	return configured
 }
 
 // ProgressHook receives periodic mid-run snapshots of real kernel state
@@ -376,6 +411,17 @@ func Simulate(arch Architecture, spec workload.Spec, opts Options) (*RunResult, 
 // diagnosis: instantaneous queue depth, in-flight slots, cumulative
 // arrivals/completions, and utilization over the elapsed window.
 type ProgressHook func(Snapshot)
+
+// SimRunControl exposes control over an in-flight run: pause at the
+// current simulated instant, resume, or stop early. Implemented by
+// engine.Runner; StartPaced returns it so an API layer can drive a run
+// interactively without importing the engine.
+type SimRunControl interface {
+	Pause() bool
+	Resume()
+	Stop()
+	Paused() bool
+}
 
 // Snapshot is one point-in-time view of the run (all values measured,
 // none derived after the fact).
@@ -394,6 +440,13 @@ type Snapshot struct {
 	// Components: one entry per constrained component, in architecture
 	// order (deterministic).
 	Components []ComponentOccupancy
+	// WallElapsedMS is real wall-clock time since the run started. Read
+	// alongside SimTimeMS it makes the pacing mode visible; it is never
+	// part of any metric (sim time drives all of those).
+	WallElapsedMS float64
+	// EventsProcessed / EventsPending are the engine's live counters.
+	EventsProcessed uint64
+	EventsPending   int64
 }
 
 // ComponentOccupancy is one component's instantaneous occupancy.
@@ -420,6 +473,14 @@ func (k *Kernel) emitSnapshot(nowMS float64) {
 		Failed:     k.failed,
 		InFlight:   int64(k.generated) - int64(k.completed) - int64(k.rejected) - int64(k.failed),
 		Components: make([]ComponentOccupancy, 0, len(k.sampledIDs)),
+		// Telemetry: real counters from the kernel and its runner — the
+		// wall-clock origin the sampler chain started at (pause-aware,
+		// because the runner idles inside ticks while paused) and the
+		// engine's processed/pending event counts. Pacing therefore never
+		// leaks into displayed metrics.
+		WallElapsedMS:   float64(time.Since(k.startedWall)) / float64(time.Millisecond),
+		EventsProcessed: k.eventsProcessed(),
+		EventsPending:   int64(k.pendingEvents()),
 	}
 	for _, id := range k.sampledIDs {
 		rt := k.rt(id)

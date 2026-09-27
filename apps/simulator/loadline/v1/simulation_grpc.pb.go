@@ -23,6 +23,10 @@ const (
 	SimulationService_RunSimulation_FullMethodName       = "/loadline.v1.SimulationService/RunSimulation"
 	SimulationService_GetSimulationStatus_FullMethodName = "/loadline.v1.SimulationService/GetSimulationStatus"
 	SimulationService_StreamMetrics_FullMethodName       = "/loadline.v1.SimulationService/StreamMetrics"
+	SimulationService_PauseSimulation_FullMethodName     = "/loadline.v1.SimulationService/PauseSimulation"
+	SimulationService_ResumeSimulation_FullMethodName    = "/loadline.v1.SimulationService/ResumeSimulation"
+	SimulationService_StopSimulation_FullMethodName      = "/loadline.v1.SimulationService/StopSimulation"
+	SimulationService_SetWallDuration_FullMethodName     = "/loadline.v1.SimulationService/SetWallDuration"
 	SimulationService_GetResults_FullMethodName          = "/loadline.v1.SimulationService/GetResults"
 	SimulationService_GetDiagnosis_FullMethodName        = "/loadline.v1.SimulationService/GetDiagnosis"
 	SimulationService_GetCapacity_FullMethodName         = "/loadline.v1.SimulationService/GetCapacity"
@@ -45,8 +49,23 @@ type SimulationServiceClient interface {
 	// Poll a simulation's status and latest progress snapshot.
 	GetSimulationStatus(ctx context.Context, in *GetSimulationStatusRequest, opts ...grpc.CallOption) (*GetSimulationStatusResponse, error)
 	// Stream progress snapshots while running, then status and final
-	// results; the stream ends after the terminal frame.
+	// results; the stream ends after the terminal frame. Control
+	// transitions (pause/resume/stop) are also broadcast on this stream.
 	StreamMetrics(ctx context.Context, in *StreamMetricsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamMetricsResponse], error)
+	// Pause a RUNNING simulation at the current simulated instant. The
+	// engine finishes the in-flight event, then idles without advancing
+	// simulated time. Final metrics remain available on completion.
+	PauseSimulation(ctx context.Context, in *PauseSimulationRequest, opts ...grpc.CallOption) (*PauseSimulationResponse, error)
+	// Resume a PAUSED simulation, optionally re-targeting the wall-clock
+	// pacing in the same call.
+	ResumeSimulation(ctx context.Context, in *ResumeSimulationRequest, opts ...grpc.CallOption) (*ResumeSimulationResponse, error)
+	// Stop a RUNNING or PAUSED simulation before its horizon. The engine
+	// drains the in-flight event and publishes partial results (marked
+	// stopped, not completed); they stay queryable.
+	StopSimulation(ctx context.Context, in *StopSimulationRequest, opts ...grpc.CallOption) (*StopSimulationResponse, error)
+	// SetWallDuration re-targets the wall-clock pacing of a live run
+	// without pausing it. 0 restores the default 1s-of-sim-per-second.
+	SetWallDuration(ctx context.Context, in *SetWallDurationRequest, opts ...grpc.CallOption) (*SetWallDurationResponse, error)
 	// Fetch final results of a completed run.
 	GetResults(ctx context.Context, in *GetResultsRequest, opts ...grpc.CallOption) (*GetResultsResponse, error)
 	// Fetch the bottleneck diagnosis (optionally vs a baseline run).
@@ -116,6 +135,46 @@ func (c *simulationServiceClient) StreamMetrics(ctx context.Context, in *StreamM
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type SimulationService_StreamMetricsClient = grpc.ServerStreamingClient[StreamMetricsResponse]
 
+func (c *simulationServiceClient) PauseSimulation(ctx context.Context, in *PauseSimulationRequest, opts ...grpc.CallOption) (*PauseSimulationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PauseSimulationResponse)
+	err := c.cc.Invoke(ctx, SimulationService_PauseSimulation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *simulationServiceClient) ResumeSimulation(ctx context.Context, in *ResumeSimulationRequest, opts ...grpc.CallOption) (*ResumeSimulationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ResumeSimulationResponse)
+	err := c.cc.Invoke(ctx, SimulationService_ResumeSimulation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *simulationServiceClient) StopSimulation(ctx context.Context, in *StopSimulationRequest, opts ...grpc.CallOption) (*StopSimulationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StopSimulationResponse)
+	err := c.cc.Invoke(ctx, SimulationService_StopSimulation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *simulationServiceClient) SetWallDuration(ctx context.Context, in *SetWallDurationRequest, opts ...grpc.CallOption) (*SetWallDurationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetWallDurationResponse)
+	err := c.cc.Invoke(ctx, SimulationService_SetWallDuration_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *simulationServiceClient) GetResults(ctx context.Context, in *GetResultsRequest, opts ...grpc.CallOption) (*GetResultsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetResultsResponse)
@@ -181,8 +240,23 @@ type SimulationServiceServer interface {
 	// Poll a simulation's status and latest progress snapshot.
 	GetSimulationStatus(context.Context, *GetSimulationStatusRequest) (*GetSimulationStatusResponse, error)
 	// Stream progress snapshots while running, then status and final
-	// results; the stream ends after the terminal frame.
+	// results; the stream ends after the terminal frame. Control
+	// transitions (pause/resume/stop) are also broadcast on this stream.
 	StreamMetrics(*StreamMetricsRequest, grpc.ServerStreamingServer[StreamMetricsResponse]) error
+	// Pause a RUNNING simulation at the current simulated instant. The
+	// engine finishes the in-flight event, then idles without advancing
+	// simulated time. Final metrics remain available on completion.
+	PauseSimulation(context.Context, *PauseSimulationRequest) (*PauseSimulationResponse, error)
+	// Resume a PAUSED simulation, optionally re-targeting the wall-clock
+	// pacing in the same call.
+	ResumeSimulation(context.Context, *ResumeSimulationRequest) (*ResumeSimulationResponse, error)
+	// Stop a RUNNING or PAUSED simulation before its horizon. The engine
+	// drains the in-flight event and publishes partial results (marked
+	// stopped, not completed); they stay queryable.
+	StopSimulation(context.Context, *StopSimulationRequest) (*StopSimulationResponse, error)
+	// SetWallDuration re-targets the wall-clock pacing of a live run
+	// without pausing it. 0 restores the default 1s-of-sim-per-second.
+	SetWallDuration(context.Context, *SetWallDurationRequest) (*SetWallDurationResponse, error)
 	// Fetch final results of a completed run.
 	GetResults(context.Context, *GetResultsRequest) (*GetResultsResponse, error)
 	// Fetch the bottleneck diagnosis (optionally vs a baseline run).
@@ -213,6 +287,18 @@ func (UnimplementedSimulationServiceServer) GetSimulationStatus(context.Context,
 }
 func (UnimplementedSimulationServiceServer) StreamMetrics(*StreamMetricsRequest, grpc.ServerStreamingServer[StreamMetricsResponse]) error {
 	return status.Error(codes.Unimplemented, "method StreamMetrics not implemented")
+}
+func (UnimplementedSimulationServiceServer) PauseSimulation(context.Context, *PauseSimulationRequest) (*PauseSimulationResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PauseSimulation not implemented")
+}
+func (UnimplementedSimulationServiceServer) ResumeSimulation(context.Context, *ResumeSimulationRequest) (*ResumeSimulationResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ResumeSimulation not implemented")
+}
+func (UnimplementedSimulationServiceServer) StopSimulation(context.Context, *StopSimulationRequest) (*StopSimulationResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method StopSimulation not implemented")
+}
+func (UnimplementedSimulationServiceServer) SetWallDuration(context.Context, *SetWallDurationRequest) (*SetWallDurationResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetWallDuration not implemented")
 }
 func (UnimplementedSimulationServiceServer) GetResults(context.Context, *GetResultsRequest) (*GetResultsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetResults not implemented")
@@ -313,6 +399,78 @@ func _SimulationService_StreamMetrics_Handler(srv interface{}, stream grpc.Serve
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type SimulationService_StreamMetricsServer = grpc.ServerStreamingServer[StreamMetricsResponse]
+
+func _SimulationService_PauseSimulation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PauseSimulationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SimulationServiceServer).PauseSimulation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SimulationService_PauseSimulation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SimulationServiceServer).PauseSimulation(ctx, req.(*PauseSimulationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SimulationService_ResumeSimulation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResumeSimulationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SimulationServiceServer).ResumeSimulation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SimulationService_ResumeSimulation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SimulationServiceServer).ResumeSimulation(ctx, req.(*ResumeSimulationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SimulationService_StopSimulation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StopSimulationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SimulationServiceServer).StopSimulation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SimulationService_StopSimulation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SimulationServiceServer).StopSimulation(ctx, req.(*StopSimulationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SimulationService_SetWallDuration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetWallDurationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SimulationServiceServer).SetWallDuration(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SimulationService_SetWallDuration_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SimulationServiceServer).SetWallDuration(ctx, req.(*SetWallDurationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
 
 func _SimulationService_GetResults_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetResultsRequest)
@@ -422,6 +580,22 @@ var SimulationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetSimulationStatus",
 			Handler:    _SimulationService_GetSimulationStatus_Handler,
+		},
+		{
+			MethodName: "PauseSimulation",
+			Handler:    _SimulationService_PauseSimulation_Handler,
+		},
+		{
+			MethodName: "ResumeSimulation",
+			Handler:    _SimulationService_ResumeSimulation_Handler,
+		},
+		{
+			MethodName: "StopSimulation",
+			Handler:    _SimulationService_StopSimulation_Handler,
+		},
+		{
+			MethodName: "SetWallDuration",
+			Handler:    _SimulationService_SetWallDuration_Handler,
 		},
 		{
 			MethodName: "GetResults",

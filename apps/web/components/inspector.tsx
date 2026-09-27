@@ -19,7 +19,6 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import {
   ComponentKind,
-  FailureType,
 } from "@loadline/api";
 import type {
   CatalogService,
@@ -35,6 +34,14 @@ import type {
 } from "@loadline/api";
 import { Badge, Button, Divider, EmptyState, Section, Select, toneForWord } from "./ui";
 import { f0, f1, f2, kindName, pct, price } from "./format";
+import {
+  BigIntInput,
+  FAILURE_LABELS,
+  FailureEditor,
+  IntInput,
+  NumInput,
+  Row,
+} from "./inspector-forms";
 
 /** Partial update of one component; config merges shallowly in the page. */
 export interface ComponentPatch {
@@ -58,123 +65,6 @@ function KV({ k, v }: { k: string; v: ReactNode }) {
     </span>
   );
 }
-
-/* --------------------------------------------------------------- inputs -- */
-
-/**
- * Numeric input with local text state: commits valid numbers as they are
- * typed, restores the canonical value on blur. Avoids fighting the user
- * over intermediate states like "" or "0.".
- */
-function NumInput({
-  value,
-  onChange,
-  step,
-  min,
-  max,
-  width = 88,
-}: {
-  value: number;
-  onChange: (v: number) => void;
-  step?: number;
-  min?: number;
-  max?: number;
-  width?: number;
-}) {
-  const [text, setText] = useState<string | null>(null);
-  return (
-    <input
-      className="input input-num"
-      style={{ width }}
-      inputMode="decimal"
-      value={text ?? String(value)}
-      step={step}
-      min={min}
-      max={max}
-      onChange={(e) => {
-        setText(e.target.value);
-        const n = Number(e.target.value);
-        if (e.target.value.trim() !== "" && Number.isFinite(n)) {
-          if ((min === undefined || n >= min) && (max === undefined || n <= max)) {
-            onChange(n);
-          }
-        }
-      }}
-      onBlur={() => setText(null)}
-    />
-  );
-}
-
-/** Integer input (int32 fields). */
-function IntInput({
-  value,
-  onChange,
-  min,
-  width = 88,
-}: {
-  value: number;
-  onChange: (v: number) => void;
-  min?: number;
-  width?: number;
-}) {
-  return (
-    <NumInput
-      value={value}
-      onChange={(v) => onChange(Math.round(v))}
-      min={min}
-      width={width}
-    />
-  );
-}
-
-/** 64-bit integer input (int64 fields arrive as bigint). */
-function BigIntInput({
-  value,
-  onChange,
-  min = 0n,
-  width = 120,
-}: {
-  value: bigint;
-  onChange: (v: bigint) => void;
-  min?: bigint;
-  width?: number;
-}) {
-  const [text, setText] = useState<string | null>(null);
-  return (
-    <input
-      className="input input-num"
-      style={{ width }}
-      inputMode="numeric"
-      value={text ?? value.toString()}
-      onChange={(e) => {
-        setText(e.target.value);
-        try {
-          const v = BigInt(e.target.value);
-          if (v >= min) onChange(v);
-        } catch {
-          /* incomplete text — keep local state until it parses */
-        }
-      }}
-      onBlur={() => setText(null)}
-    />
-  );
-}
-
-function Row({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="ins-row">
-      <span className="ins-row-label">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-const FAILURE_LABELS: Record<number, string> = {
-  [FailureType.CRASH]: "crash",
-  [FailureType.INCREASED_LATENCY]: "increased latency",
-  [FailureType.INCREASED_ERROR_RATE]: "increased error rate",
-  [FailureType.NETWORK_FAILURE]: "network failure",
-};
 
 /* ---------------------------------------------------------------- shell -- */
 
@@ -477,6 +367,7 @@ function ArchitectureView({
           ))
         )}
       </Section>
+      {/* NOTE: kept verbatim; the per-component editor below is FailureEditor. */}
     </div>
   );
 }
@@ -823,7 +714,7 @@ function ComponentView({
       )}
 
       {!isClient && (
-        <FailureSection
+        <FailureEditor
           target={comp.id}
           failures={failures}
           onAdd={onAddFailure}
@@ -960,151 +851,6 @@ function ComponentView({
       </Section>
     </div>
   );
-}
-
-/* ------------------------------------------------------- failure editor --- */
-
-function FailureSection({
-  target,
-  failures,
-  onAdd,
-  onRemove,
-}: {
-  target: string;
-  failures: Failure[];
-  onAdd: (f: Failure) => void;
-  onRemove: (index: number) => void;
-}) {
-  const mine = failures
-    .map((f, i) => ({ f, i }))
-    .filter(({ f }) => f.target === target);
-  const [type, setType] = useState<FailureType>(FailureType.CRASH);
-  const [startMs, setStartMs] = useState(1000);
-  const [durationMs, setDurationMs] = useState(5000);
-  const [addedLatencyMs, setAddedLatencyMs] = useState(20);
-  const [errorRate, setErrorRate] = useState(0.2);
-  const [packetLossRate, setPacketLossRate] = useState(0.1);
-  const [passThrough, setPassThrough] = useState(true);
-
-  return (
-    <>
-      <Divider />
-      <Section label={`failure injections — ${mine.length}`}>
-        {mine.length === 0 && <EmptyState>none scheduled for this component.</EmptyState>}
-        {mine.map(({ f, i }) => (
-          <div key={i} className="ins-failure">
-            <span className="ins-failure-line">
-              {FAILURE_LABELS[f.type] ?? f.type} · t={f0(f.startMs)}ms →{" "}
-              {f0(f.startMs + f.durationMs)}ms
-              {f.config?.passThrough ? " · pass-through" : ""}
-            </span>
-            <button
-              type="button"
-              className="pal-del"
-              title="remove failure"
-              onClick={() => onRemove(i)}
-            >
-              ×
-            </button>
-          </div>
-        ))}
-        <div className="ins-failure-form">
-          <Row label="type">
-            <Select
-              value={String(type)}
-              onChange={(v) => setType(Number(v) as FailureType)}
-              width={150}
-              options={Object.entries(FAILURE_LABELS).map(([v, label]) => ({
-                value: v,
-                label,
-              }))}
-            />
-          </Row>
-          <Row label="start ms">
-            <NumInput value={startMs} min={0} onChange={setStartMs} width={80} />
-          </Row>
-          <Row label="duration ms">
-            <NumInput
-              value={durationMs}
-              min={1}
-              onChange={setDurationMs}
-              width={80}
-            />
-          </Row>
-          {type === FailureType.INCREASED_LATENCY && (
-            <Row label="added ms">
-              <NumInput
-                value={addedLatencyMs}
-                min={0}
-                onChange={setAddedLatencyMs}
-                width={80}
-              />
-            </Row>
-          )}
-          {type === FailureType.INCREASED_ERROR_RATE && (
-            <Row label="error rate">
-              <NumInput
-                value={errorRate}
-                min={0}
-                max={1}
-                step={0.05}
-                onChange={setErrorRate}
-                width={80}
-              />
-            </Row>
-          )}
-          {type === FailureType.NETWORK_FAILURE && (
-            <>
-              <Row label="packet loss">
-                <NumInput
-                  value={packetLossRate}
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  onChange={setPacketLossRate}
-                  width={80}
-                />
-              </Row>
-              <Row label="added ms">
-                <NumInput
-                  value={addedLatencyMs}
-                  min={0}
-                  onChange={setAddedLatencyMs}
-                  width={80}
-                />
-              </Row>
-            </>
-          )}
-          {type === FailureType.CRASH && (
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={passThrough}
-                onChange={(e) => setPassThrough(e.target.checked)}
-              />
-              <span>pass through (fallback to downstream)</span>
-            </label>
-          )}
-          <Button
-            onClick={() =>
-              onAdd({
-                target,
-                type,
-                startMs,
-                durationMs,
-                config: {
-                  addedLatencyMillis: addedLatencyMs,
-                  errorRate,
-                  packetLossRate,
-                  passThrough,
-                },
-              })
-            }
-          >
-            schedule
-          </Button>
-        </div>
-      </Section>
-    </>
-  );
-}
+}/* ------------------------------------ failure editor now shared —
+   FailureSection was extracted to inspector-forms.tsx as FailureEditor;
+   the ComponentView below references it by that name. */

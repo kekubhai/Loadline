@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file loadline/v1/simulation.proto.
  */
 export const file_loadline_v1_simulation: GenFile = /*@__PURE__*/
-  fileDesc("Chxsb2FkbGluZS92MS9zaW11bGF0aW9uLnByb3RvEgtsb2FkbGluZS52MSKoAwoNQ29tcG9uZW50U3BlYxIKCgJpZBgBIAEoCRIoCgRraW5kGAIgASgOMhoubG9hZGxpbmUudjEuQ29tcG9uZW50S2luZBJOChNzZXJ2aWNlX3RpbWVfbWlsbGlzGAMgAygLMjEubG9hZGxpbmUudjEuQ29tcG9uZW50U3BlYy5TZXJ2aWNlVGltZU1pbGxpc0VudHJ5EiMKG2RlZmF1bHRfc2VydmljZV90aW1lX21pbGxpcxgEIAEoARITCgtjb25jdXJyZW5jeRgFIAEoBRITCgtxdWV1ZV9saW1pdBgGIAEoBRIUCgxjYXBhY2l0eV9ycHMYByABKAESEQoJaGl0X3JhdGlvGAggASgBEg8KB2Zhbl9vdXQYCSABKAUSEAoIcHJvdmlkZXIYCiABKAkSDwoHc2VydmljZRgLIAEoCRIrCgZjb25maWcYDCABKAsyGy5sb2FkbGluZS52MS5Qcm92aWRlckNvbmZpZxo4ChZTZXJ2aWNlVGltZU1pbGxpc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoAToCOAEigwEKDlByb3ZpZGVyQ29uZmlnEhMKC2NvbmN1cnJlbmN5GAEgASgFEhMKC3F1ZXVlX2xpbWl0GAIgASgFEg0KBXVuaXRzGAMgASgFEhEKCW1lbW9yeV9tYhgEIAEoBRISCgpzdG9yYWdlX2diGAUgASgBEhEKCWhpdF9yYXRpbxgGIAEoASIzCgRMaW5rEgwKBGZyb20YASABKAkSCgoCdG8YAiABKAkSEQoJY29uZGl0aW9uGAMgASgJIoYBCgxBcmNoaXRlY3R1cmUSFgoOc2NoZW1hX3ZlcnNpb24YASABKAkSDAoEbmFtZRgCIAEoCRIuCgpjb21wb25lbnRzGAMgAygLMhoubG9hZGxpbmUudjEuQ29tcG9uZW50U3BlYxIgCgVsaW5rcxgEIAMoCzIRLmxvYWRsaW5lLnYxLkxpbmsinQEKDFdvcmtsb2FkU3BlYxITCgt0b3RhbF91c2VycxgBIAEoAxILCgNkYXUYAiABKAMSIQoZcmVxdWVzdHNfcGVyX3VzZXJfcGVyX2RheRgDIAEoARIXCg9wZWFrX211bHRpcGxpZXIYBCABKAESGAoQcmVhZF93cml0ZV9yYXRpbxgFIAEoARIVCg1wYXlsb2FkX2J5dGVzGAYgASgDIqgCCghMb2FkUGxhbhITCgt0b3RhbF91c2VycxgBIAEoAxILCgNkYXUYAiABKAMSFAoMZGF1X2ZyYWN0aW9uGAMgASgBEiEKGXJlcXVlc3RzX3Blcl91c2VyX3Blcl9kYXkYBCABKAESGAoQcmVxdWVzdHNfcGVyX2RheRgFIAEoARITCgthdmVyYWdlX3JwcxgGIAEoARIXCg9wZWFrX211bHRpcGxpZXIYByABKAESEAoIcGVha19ycHMYCCABKAESFQoNcmVhZF9mcmFjdGlvbhgJIAEoARIWCg53cml0ZV9mcmFjdGlvbhgKIAEoARIVCg1wYXlsb2FkX2J5dGVzGAsgASgDEiEKGW1lYW5faW50ZXJfYXJyaXZhbF9taWxsaXMYDCABKAEicQoNRmFpbHVyZUNvbmZpZxIcChRhZGRlZF9sYXRlbmN5X21pbGxpcxgBIAEoARISCgplcnJvcl9yYXRlGAIgASgBEhgKEHBhY2tldF9sb3NzX3JhdGUYAyABKAESFAoMcGFzc190aHJvdWdoGAQgASgIIpQBCgdGYWlsdXJlEg4KBnRhcmdldBgBIAEoCRImCgR0eXBlGAIgASgOMhgubG9hZGxpbmUudjEuRmFpbHVyZVR5cGUSEAoIc3RhcnRfbXMYAyABKAESEwoLZHVyYXRpb25fbXMYBCABKAESKgoGY29uZmlnGAUgASgLMhoubG9hZGxpbmUudjEuRmFpbHVyZUNvbmZpZyKyAQoRU2ltdWxhdGlvbk9wdGlvbnMSDAoEc2VlZBgBIAEoBBITCgtkdXJhdGlvbl9tcxgCIAEoARImCghmYWlsdXJlcxgDIAMoCzIULmxvYWRsaW5lLnYxLkZhaWx1cmUSEwoLbWF4X3JldHJpZXMYBCABKAUSFwoPYmFja29mZl9iYXNlX21zGAUgASgBEhIKCnRpbWVvdXRfbXMYBiABKAESEAoIcmV0cnlfb24YByADKAkipwEKClNpbXVsYXRpb24SCgoCaWQYASABKAkSLwoMYXJjaGl0ZWN0dXJlGAIgASgLMhkubG9hZGxpbmUudjEuQXJjaGl0ZWN0dXJlEisKCHdvcmtsb2FkGAMgASgLMhkubG9hZGxpbmUudjEuV29ya2xvYWRTcGVjEi8KB29wdGlvbnMYBCABKAsyHi5sb2FkbGluZS52MS5TaW11bGF0aW9uT3B0aW9ucyKoAQoXQ3JlYXRlU2ltdWxhdGlvblJlcXVlc3QSLwoMYXJjaGl0ZWN0dXJlGAEgASgLMhkubG9hZGxpbmUudjEuQXJjaGl0ZWN0dXJlEisKCHdvcmtsb2FkGAIgASgLMhkubG9hZGxpbmUudjEuV29ya2xvYWRTcGVjEi8KB29wdGlvbnMYAyABKAsyHi5sb2FkbGluZS52MS5TaW11bGF0aW9uT3B0aW9ucyJHChhDcmVhdGVTaW11bGF0aW9uUmVzcG9uc2USKwoKc2ltdWxhdGlvbhgBIAEoCzIXLmxvYWRsaW5lLnYxLlNpbXVsYXRpb24iLQoUUnVuU2ltdWxhdGlvblJlcXVlc3QSFQoNc2ltdWxhdGlvbl9pZBgBIAEoCSJEChVSdW5TaW11bGF0aW9uUmVzcG9uc2USKwoKc2ltdWxhdGlvbhgBIAEoCzIXLmxvYWRsaW5lLnYxLlNpbXVsYXRpb24itwEKEFByb2dyZXNzU25hcHNob3QSEwoLc2ltX3RpbWVfbXMYASABKAESEQoJZ2VuZXJhdGVkGAIgASgEEhEKCWNvbXBsZXRlZBgDIAEoBBIQCghyZWplY3RlZBgEIAEoBBIOCgZmYWlsZWQYBSABKAQSEQoJaW5fZmxpZ2h0GAYgASgDEjMKCmNvbXBvbmVudHMYByADKAsyHy5sb2FkbGluZS52MS5Db21wb25lbnRPY2N1cGFuY3kiiwEKEkNvbXBvbmVudE9jY3VwYW5jeRIUCgxjb21wb25lbnRfaWQYASABKAkSEwoLcXVldWVfZGVwdGgYAiABKAUSEQoJaW5fZmxpZ2h0GAMgASgFEg8KB2Fycml2ZWQYBCABKAQSEQoJY29tcGxldGVkGAUgASgEEhMKC3V0aWxpemF0aW9uGAYgASgBIjMKGkdldFNpbXVsYXRpb25TdGF0dXNSZXF1ZXN0EhUKDXNpbXVsYXRpb25faWQYASABKAkinAEKG0dldFNpbXVsYXRpb25TdGF0dXNSZXNwb25zZRIVCg1zaW11bGF0aW9uX2lkGAEgASgJEiYKBnN0YXR1cxgCIAEoDjIWLmxvYWRsaW5lLnYxLlJ1blN0YXR1cxINCgVlcnJvchgDIAEoCRIvCghwcm9ncmVzcxgEIAEoCzIdLmxvYWRsaW5lLnYxLlByb2dyZXNzU25hcHNob3QiLQoUU3RyZWFtTWV0cmljc1JlcXVlc3QSFQoNc2ltdWxhdGlvbl9pZBgBIAEoCSK9AQoVU3RyZWFtTWV0cmljc1Jlc3BvbnNlEjEKCHByb2dyZXNzGAEgASgLMh0ubG9hZGxpbmUudjEuUHJvZ3Jlc3NTbmFwc2hvdEgAEjoKBnN0YXR1cxgCIAEoCzIoLmxvYWRsaW5lLnYxLkdldFNpbXVsYXRpb25TdGF0dXNSZXNwb25zZUgAEiwKB3Jlc3VsdHMYAyABKAsyGS5sb2FkbGluZS52MS5GaW5hbFJlc3VsdHNIAEIHCgVldmVudCLmAgoQQ29tcG9uZW50TWV0cmljcxIKCgJpZBgBIAEoCRIMCgRraW5kGAIgASgJEg8KB2Fycml2ZWQYAyABKAQSEQoJY29tcGxldGVkGAQgASgEEhAKCHJlamVjdGVkGAUgASgEEg4KBmZhaWxlZBgGIAEoBBITCgtxdWV1ZV9kZXB0aBgHIAEoBRIXCg9tYXhfcXVldWVfZGVwdGgYCCABKAUSEQoJaW5fZmxpZ2h0GAkgASgFEhMKC3V0aWxpemF0aW9uGAogASgBEhkKEWF2Z19xdWV1ZV93YWl0X21zGAsgASgBEhYKDmF2Z19zZXJ2aWNlX21zGAwgASgBEhYKDnRocm91Z2hwdXRfcnBzGA0gASgBEhMKC2Fycml2YWxfcnBzGA4gASgBEhQKDGNhcGFjaXR5X3JwcxgPIAEoARITCgtxdWV1ZV90cmVuZBgQIAEoCRIRCglzYXR1cmF0ZWQYESABKAginAEKDUZhaWx1cmVSZWNvcmQSEgoKcmVxdWVzdF9pZBgBIAEoBBIUCgxjb21wb25lbnRfaWQYAiABKAkSEQoJY2FsbGVyX2lkGAMgASgJEgwKBGtpbmQYBCABKAkSDwoHYXR0ZW1wdBgFIAEoBRINCgVhdF9tcxgGIAEoARISCgpsYXRlbmN5X21zGAcgASgBEgwKBHBhdGgYCCADKAki3wIKDVN5c3RlbU1ldHJpY3MSEwoLZHVyYXRpb25fbXMYASABKAESEQoJZ2VuZXJhdGVkGAIgASgEEhEKCWNvbXBsZXRlZBgDIAEoBBIQCghyZWplY3RlZBgEIAEoBBIOCgZmYWlsZWQYBSABKAQSEAoIdGltZW91dHMYBiABKAQSDwoHZHJvcHBlZBgHIAEoBBIRCglpbl9mbGlnaHQYCCABKAQSEgoKZXJyb3JfcmF0ZRgJIAEoARIUCgx0aW1lb3V0X3JhdGUYCiABKAESFgoOYXZnX2xhdGVuY3lfbXMYCyABKAESDgoGcDUwX21zGAwgASgBEg4KBnA5NV9tcxgNIAEoARIOCgZwOTlfbXMYDiABKAESFgoObWF4X2xhdGVuY3lfbXMYDyABKAESMQoKY29tcG9uZW50cxgQIAMoCzIdLmxvYWRsaW5lLnYxLkNvbXBvbmVudE1ldHJpY3MibQoKUnVuU3VtbWFyeRIYChBldmVudHNfcHJvY2Vzc2VkGAEgASgEEhgKEGV2ZW50c19zY2hlZHVsZWQYAiABKAQSFgoOZXZlbnRzX3BlbmRpbmcYAyABKAUSEwoLc3RvcF9yZWFzb24YBCABKAkiKgoRR2V0UmVzdWx0c1JlcXVlc3QSFQoNc2ltdWxhdGlvbl9pZBgBIAEoCSLVAQoSR2V0UmVzdWx0c1Jlc3BvbnNlEhUKDXNpbXVsYXRpb25faWQYAiABKAkSIwoEcGxhbhgDIAEoCzIVLmxvYWRsaW5lLnYxLkxvYWRQbGFuEisKB21ldHJpY3MYBCABKAsyGi5sb2FkbGluZS52MS5TeXN0ZW1NZXRyaWNzEiwKCGZhaWx1cmVzGAUgAygLMhoubG9hZGxpbmUudjEuRmFpbHVyZVJlY29yZBIoCgdzdW1tYXJ5GAYgASgLMhcubG9hZGxpbmUudjEuUnVuU3VtbWFyeSK4AQoMRmluYWxSZXN1bHRzEiMKBHBsYW4YASABKAsyFS5sb2FkbGluZS52MS5Mb2FkUGxhbhIrCgdtZXRyaWNzGAIgASgLMhoubG9hZGxpbmUudjEuU3lzdGVtTWV0cmljcxIsCghmYWlsdXJlcxgDIAMoCzIaLmxvYWRsaW5lLnYxLkZhaWx1cmVSZWNvcmQSKAoHc3VtbWFyeRgEIAEoCzIXLmxvYWRsaW5lLnYxLlJ1blN1bW1hcnkiZAoKQm90dGxlbmVjaxIUCgxjb21wb25lbnRfaWQYASABKAkSDAoEa2luZBgCIAEoCRIQCghzZXZlcml0eRgDIAEoCRIPCgdyZWFzb25zGAQgAygJEg8KB2ltcGFjdHMYBSADKAkibAoJRGlhZ25vc2lzEiwKC2JvdHRsZW5lY2tzGAEgAygLMhcubG9hZGxpbmUudjEuQm90dGxlbmVjaxIPCgdpbXBhY3RzGAIgAygJEg8KB2hlYWx0aHkYAyABKAgSDwoHc3VtbWFyeRgEIAEoCSJMChNHZXREaWFnbm9zaXNSZXF1ZXN0EhUKDXNpbXVsYXRpb25faWQYASABKAkSHgoWYmFzZWxpbmVfc2ltdWxhdGlvbl9pZBgCIAEoCSJYChRHZXREaWFnbm9zaXNSZXNwb25zZRIVCg1zaW11bGF0aW9uX2lkGAEgASgJEikKCWRpYWdub3NpcxgCIAEoCzIWLmxvYWRsaW5lLnYxLkRpYWdub3NpcyLeAQoOQ2FwYWNpdHlSZXBvcnQSFAoMY29tcG9uZW50X2lkGAEgASgJEhAKCHByb3ZpZGVyGAIgASgJEg8KB3NlcnZpY2UYAyABKAkSEwoLY3VycmVudF9ycHMYBCABKAESGwoTbWF4X3N1c3RhaW5hYmxlX3JwcxgFIAEoARITCgt1dGlsaXphdGlvbhgGIAEoARIQCghoZWFkcm9vbRgHIAEoARIRCglzYXR1cmF0ZWQYCCABKAgSEgoKYm90dGxlbmVjaxgJIAEoCBITCgthc3N1bXB0aW9ucxgKIAMoCSJCChJHZXRDYXBhY2l0eVJlcXVlc3QSFQoNc2ltdWxhdGlvbl9pZBgBIAEoCRIVCg1jb21wb25lbnRfaWRzGAIgAygJIloKE0dldENhcGFjaXR5UmVzcG9uc2USFQoNc2ltdWxhdGlvbl9pZBgBIAEoCRIsCgdyZXBvcnRzGAIgAygLMhsubG9hZGxpbmUudjEuQ2FwYWNpdHlSZXBvcnQilQEKDENvc3RMaW5lSXRlbRIUCgxjb21wb25lbnRfaWQYASABKAkSEAoIY2F0ZWdvcnkYAiABKAkSEwoLZGVzY3JpcHRpb24YAyABKAkSEAoIcXVhbnRpdHkYBCABKAESDAoEdW5pdBgFIAEoCRISCgp1bml0X3ByaWNlGAYgASgBEhQKDG1vbnRobHlfY29zdBgHIAEoASKIAQoNQ29tcG9uZW50Q29zdBIUCgxjb21wb25lbnRfaWQYASABKAkSEAoIcHJvdmlkZXIYAiABKAkSDwoHc2VydmljZRgDIAEoCRItCgpsaW5lX2l0ZW1zGAQgAygLMhkubG9hZGxpbmUudjEuQ29zdExpbmVJdGVtEg8KB21vbnRobHkYBSABKAEi5wEKDENvc3RFc3RpbWF0ZRIQCghjdXJyZW5jeRgBIAEoCRINCgV0b3RhbBgCIAEoARI+CgtieV9jYXRlZ29yeRgDIAMoCzIpLmxvYWRsaW5lLnYxLkNvc3RFc3RpbWF0ZS5CeUNhdGVnb3J5RW50cnkSLgoKY29tcG9uZW50cxgEIAMoCzIaLmxvYWRsaW5lLnYxLkNvbXBvbmVudENvc3QSEwoLYXNzdW1wdGlvbnMYBSADKAkaMQoPQnlDYXRlZ29yeUVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoAToCOAEiLwoWR2V0Q29zdEVzdGltYXRlUmVxdWVzdBIVCg1zaW11bGF0aW9uX2lkGAEgASgJIl0KF0dldENvc3RFc3RpbWF0ZVJlc3BvbnNlEhUKDXNpbXVsYXRpb25faWQYASABKAkSKwoIZXN0aW1hdGUYAiABKAsyGS5sb2FkbGluZS52MS5Db3N0RXN0aW1hdGUijgIKDkNhdGFsb2dTZXJ2aWNlEhAKCHByb3ZpZGVyGAEgASgJEg8KB3NlcnZpY2UYAiABKAkSDwoHc3VtbWFyeRgDIAEoCRIWCg5jb21wb25lbnRfa2luZBgEIAEoCRITCgtjb25jdXJyZW5jeRgFIAEoBRITCgtxdWV1ZV9saW1pdBgGIAEoBRITCgttb2RlbGVkX3JwcxgHIAEoARIfChdkZWZhdWx0X3NlcnZpY2VfdGltZV9tcxgIIAEoARIUCgxzY2FsaW5nX2tpbmQYCSABKAkSGQoRcGVyX3JlcXVlc3RfcHJpY2UYCiABKAESHwoXcGVyX2luc3RhbmNlX2hvdXJfcHJpY2UYCyABKAEiFAoSTGlzdENhdGFsb2dSZXF1ZXN0IkQKE0xpc3RDYXRhbG9nUmVzcG9uc2USLQoIc2VydmljZXMYASADKAsyGy5sb2FkbGluZS52MS5DYXRhbG9nU2VydmljZSq2AgoNQ29tcG9uZW50S2luZBIeChpDT01QT05FTlRfS0lORF9VTlNQRUNJRklFRBAAEhkKFUNPTVBPTkVOVF9LSU5EX0NMSUVOVBABEiAKHENPTVBPTkVOVF9LSU5EX0xPQURfQkFMQU5DRVIQAhIdChlDT01QT05FTlRfS0lORF9BUElfU0VSVkVSEAMSGAoUQ09NUE9ORU5UX0tJTkRfQ0FDSEUQBBIYChRDT01QT05FTlRfS0lORF9RVUVVRRAFEhkKFUNPTVBPTkVOVF9LSU5EX1dPUktFUhAGEhsKF0NPTVBPTkVOVF9LSU5EX0RBVEFCQVNFEAcSIQodQ09NUE9ORU5UX0tJTkRfT0JKRUNUX1NUT1JBR0UQCBIaChZDT01QT05FTlRfS0lORF9ORVRXT1JLEAkqsAEKC0ZhaWx1cmVUeXBlEhwKGEZBSUxVUkVfVFlQRV9VTlNQRUNJRklFRBAAEhYKEkZBSUxVUkVfVFlQRV9DUkFTSBABEiIKHkZBSUxVUkVfVFlQRV9JTkNSRUFTRURfTEFURU5DWRACEiUKIUZBSUxVUkVfVFlQRV9JTkNSRUFTRURfRVJST1JfUkFURRADEiAKHEZBSUxVUkVfVFlQRV9ORVRXT1JLX0ZBSUxVUkUQBCqIAQoJUnVuU3RhdHVzEhoKFlJVTl9TVEFUVVNfVU5TUEVDSUZJRUQQABIWChJSVU5fU1RBVFVTX1BFTkRJTkcQARIWChJSVU5fU1RBVFVTX1JVTk5JTkcQAhIYChRSVU5fU1RBVFVTX0NPTVBMRVRFRBADEhUKEVJVTl9TVEFUVVNfRkFJTEVEEAQytgYKEVNpbXVsYXRpb25TZXJ2aWNlEl8KEENyZWF0ZVNpbXVsYXRpb24SJC5sb2FkbGluZS52MS5DcmVhdGVTaW11bGF0aW9uUmVxdWVzdBolLmxvYWRsaW5lLnYxLkNyZWF0ZVNpbXVsYXRpb25SZXNwb25zZRJWCg1SdW5TaW11bGF0aW9uEiEubG9hZGxpbmUudjEuUnVuU2ltdWxhdGlvblJlcXVlc3QaIi5sb2FkbGluZS52MS5SdW5TaW11bGF0aW9uUmVzcG9uc2USaAoTR2V0U2ltdWxhdGlvblN0YXR1cxInLmxvYWRsaW5lLnYxLkdldFNpbXVsYXRpb25TdGF0dXNSZXF1ZXN0GigubG9hZGxpbmUudjEuR2V0U2ltdWxhdGlvblN0YXR1c1Jlc3BvbnNlElgKDVN0cmVhbU1ldHJpY3MSIS5sb2FkbGluZS52MS5TdHJlYW1NZXRyaWNzUmVxdWVzdBoiLmxvYWRsaW5lLnYxLlN0cmVhbU1ldHJpY3NSZXNwb25zZTABEk0KCkdldFJlc3VsdHMSHi5sb2FkbGluZS52MS5HZXRSZXN1bHRzUmVxdWVzdBofLmxvYWRsaW5lLnYxLkdldFJlc3VsdHNSZXNwb25zZRJTCgxHZXREaWFnbm9zaXMSIC5sb2FkbGluZS52MS5HZXREaWFnbm9zaXNSZXF1ZXN0GiEubG9hZGxpbmUudjEuR2V0RGlhZ25vc2lzUmVzcG9uc2USUAoLR2V0Q2FwYWNpdHkSHy5sb2FkbGluZS52MS5HZXRDYXBhY2l0eVJlcXVlc3QaIC5sb2FkbGluZS52MS5HZXRDYXBhY2l0eVJlc3BvbnNlElwKD0dldENvc3RFc3RpbWF0ZRIjLmxvYWRsaW5lLnYxLkdldENvc3RFc3RpbWF0ZVJlcXVlc3QaJC5sb2FkbGluZS52MS5HZXRDb3N0RXN0aW1hdGVSZXNwb25zZRJQCgtMaXN0Q2F0YWxvZxIfLmxvYWRsaW5lLnYxLkxpc3RDYXRhbG9nUmVxdWVzdBogLmxvYWRsaW5lLnYxLkxpc3RDYXRhbG9nUmVzcG9uc2VCRFpCZ2l0aHViLmNvbS9rZWt1YmhhaS9Mb2FkbGluZS9hcHBzL3NpbXVsYXRvci9sb2FkbGluZS92MTtsb2FkbGluZXYxYgZwcm90bzM");
+  fileDesc("Chxsb2FkbGluZS92MS9zaW11bGF0aW9uLnByb3RvEgtsb2FkbGluZS52MSKoAwoNQ29tcG9uZW50U3BlYxIKCgJpZBgBIAEoCRIoCgRraW5kGAIgASgOMhoubG9hZGxpbmUudjEuQ29tcG9uZW50S2luZBJOChNzZXJ2aWNlX3RpbWVfbWlsbGlzGAMgAygLMjEubG9hZGxpbmUudjEuQ29tcG9uZW50U3BlYy5TZXJ2aWNlVGltZU1pbGxpc0VudHJ5EiMKG2RlZmF1bHRfc2VydmljZV90aW1lX21pbGxpcxgEIAEoARITCgtjb25jdXJyZW5jeRgFIAEoBRITCgtxdWV1ZV9saW1pdBgGIAEoBRIUCgxjYXBhY2l0eV9ycHMYByABKAESEQoJaGl0X3JhdGlvGAggASgBEg8KB2Zhbl9vdXQYCSABKAUSEAoIcHJvdmlkZXIYCiABKAkSDwoHc2VydmljZRgLIAEoCRIrCgZjb25maWcYDCABKAsyGy5sb2FkbGluZS52MS5Qcm92aWRlckNvbmZpZxo4ChZTZXJ2aWNlVGltZU1pbGxpc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoAToCOAEigwEKDlByb3ZpZGVyQ29uZmlnEhMKC2NvbmN1cnJlbmN5GAEgASgFEhMKC3F1ZXVlX2xpbWl0GAIgASgFEg0KBXVuaXRzGAMgASgFEhEKCW1lbW9yeV9tYhgEIAEoBRISCgpzdG9yYWdlX2diGAUgASgBEhEKCWhpdF9yYXRpbxgGIAEoASIzCgRMaW5rEgwKBGZyb20YASABKAkSCgoCdG8YAiABKAkSEQoJY29uZGl0aW9uGAMgASgJIoYBCgxBcmNoaXRlY3R1cmUSFgoOc2NoZW1hX3ZlcnNpb24YASABKAkSDAoEbmFtZRgCIAEoCRIuCgpjb21wb25lbnRzGAMgAygLMhoubG9hZGxpbmUudjEuQ29tcG9uZW50U3BlYxIgCgVsaW5rcxgEIAMoCzIRLmxvYWRsaW5lLnYxLkxpbmsinQEKDFdvcmtsb2FkU3BlYxITCgt0b3RhbF91c2VycxgBIAEoAxILCgNkYXUYAiABKAMSIQoZcmVxdWVzdHNfcGVyX3VzZXJfcGVyX2RheRgDIAEoARIXCg9wZWFrX211bHRpcGxpZXIYBCABKAESGAoQcmVhZF93cml0ZV9yYXRpbxgFIAEoARIVCg1wYXlsb2FkX2J5dGVzGAYgASgDIqgCCghMb2FkUGxhbhITCgt0b3RhbF91c2VycxgBIAEoAxILCgNkYXUYAiABKAMSFAoMZGF1X2ZyYWN0aW9uGAMgASgBEiEKGXJlcXVlc3RzX3Blcl91c2VyX3Blcl9kYXkYBCABKAESGAoQcmVxdWVzdHNfcGVyX2RheRgFIAEoARITCgthdmVyYWdlX3JwcxgGIAEoARIXCg9wZWFrX211bHRpcGxpZXIYByABKAESEAoIcGVha19ycHMYCCABKAESFQoNcmVhZF9mcmFjdGlvbhgJIAEoARIWCg53cml0ZV9mcmFjdGlvbhgKIAEoARIVCg1wYXlsb2FkX2J5dGVzGAsgASgDEiEKGW1lYW5faW50ZXJfYXJyaXZhbF9taWxsaXMYDCABKAEicQoNRmFpbHVyZUNvbmZpZxIcChRhZGRlZF9sYXRlbmN5X21pbGxpcxgBIAEoARISCgplcnJvcl9yYXRlGAIgASgBEhgKEHBhY2tldF9sb3NzX3JhdGUYAyABKAESFAoMcGFzc190aHJvdWdoGAQgASgIIpQBCgdGYWlsdXJlEg4KBnRhcmdldBgBIAEoCRImCgR0eXBlGAIgASgOMhgubG9hZGxpbmUudjEuRmFpbHVyZVR5cGUSEAoIc3RhcnRfbXMYAyABKAESEwoLZHVyYXRpb25fbXMYBCABKAESKgoGY29uZmlnGAUgASgLMhoubG9hZGxpbmUudjEuRmFpbHVyZUNvbmZpZyKyAQoRU2ltdWxhdGlvbk9wdGlvbnMSDAoEc2VlZBgBIAEoBBITCgtkdXJhdGlvbl9tcxgCIAEoARImCghmYWlsdXJlcxgDIAMoCzIULmxvYWRsaW5lLnYxLkZhaWx1cmUSEwoLbWF4X3JldHJpZXMYBCABKAUSFwoPYmFja29mZl9iYXNlX21zGAUgASgBEhIKCnRpbWVvdXRfbXMYBiABKAESEAoIcmV0cnlfb24YByADKAkipwEKClNpbXVsYXRpb24SCgoCaWQYASABKAkSLwoMYXJjaGl0ZWN0dXJlGAIgASgLMhkubG9hZGxpbmUudjEuQXJjaGl0ZWN0dXJlEisKCHdvcmtsb2FkGAMgASgLMhkubG9hZGxpbmUudjEuV29ya2xvYWRTcGVjEi8KB29wdGlvbnMYBCABKAsyHi5sb2FkbGluZS52MS5TaW11bGF0aW9uT3B0aW9ucyKoAQoXQ3JlYXRlU2ltdWxhdGlvblJlcXVlc3QSLwoMYXJjaGl0ZWN0dXJlGAEgASgLMhkubG9hZGxpbmUudjEuQXJjaGl0ZWN0dXJlEisKCHdvcmtsb2FkGAIgASgLMhkubG9hZGxpbmUudjEuV29ya2xvYWRTcGVjEi8KB29wdGlvbnMYAyABKAsyHi5sb2FkbGluZS52MS5TaW11bGF0aW9uT3B0aW9ucyJHChhDcmVhdGVTaW11bGF0aW9uUmVzcG9uc2USKwoKc2ltdWxhdGlvbhgBIAEoCzIXLmxvYWRsaW5lLnYxLlNpbXVsYXRpb24iRwoUUnVuU2ltdWxhdGlvblJlcXVlc3QSFQoNc2ltdWxhdGlvbl9pZBgBIAEoCRIYChB3YWxsX2R1cmF0aW9uX21zGAIgASgBIkQKFVJ1blNpbXVsYXRpb25SZXNwb25zZRIrCgpzaW11bGF0aW9uGAEgASgLMhcubG9hZGxpbmUudjEuU2ltdWxhdGlvbiKCAgoQUHJvZ3Jlc3NTbmFwc2hvdBITCgtzaW1fdGltZV9tcxgBIAEoARIRCglnZW5lcmF0ZWQYAiABKAQSEQoJY29tcGxldGVkGAMgASgEEhAKCHJlamVjdGVkGAQgASgEEg4KBmZhaWxlZBgFIAEoBBIRCglpbl9mbGlnaHQYBiABKAMSMwoKY29tcG9uZW50cxgHIAMoCzIfLmxvYWRsaW5lLnYxLkNvbXBvbmVudE9jY3VwYW5jeRIXCg93YWxsX2VsYXBzZWRfbXMYCCABKAESGAoQZXZlbnRzX3Byb2Nlc3NlZBgJIAEoBBIWCg5ldmVudHNfcGVuZGluZxgKIAEoAyIvChZQYXVzZVNpbXVsYXRpb25SZXF1ZXN0EhUKDXNpbXVsYXRpb25faWQYASABKAkiWAoXUGF1c2VTaW11bGF0aW9uUmVzcG9uc2USFQoNc2ltdWxhdGlvbl9pZBgBIAEoCRImCgZzdGF0dXMYAiABKA4yFi5sb2FkbGluZS52MS5SdW5TdGF0dXMiSgoXUmVzdW1lU2ltdWxhdGlvblJlcXVlc3QSFQoNc2ltdWxhdGlvbl9pZBgBIAEoCRIYChB3YWxsX2R1cmF0aW9uX21zGAIgASgBIlkKGFJlc3VtZVNpbXVsYXRpb25SZXNwb25zZRIVCg1zaW11bGF0aW9uX2lkGAEgASgJEiYKBnN0YXR1cxgCIAEoDjIWLmxvYWRsaW5lLnYxLlJ1blN0YXR1cyIuChVTdG9wU2ltdWxhdGlvblJlcXVlc3QSFQoNc2ltdWxhdGlvbl9pZBgBIAEoCSJXChZTdG9wU2ltdWxhdGlvblJlc3BvbnNlEhUKDXNpbXVsYXRpb25faWQYASABKAkSJgoGc3RhdHVzGAIgASgOMhYubG9hZGxpbmUudjEuUnVuU3RhdHVzIkkKFlNldFdhbGxEdXJhdGlvblJlcXVlc3QSFQoNc2ltdWxhdGlvbl9pZBgBIAEoCRIYChB3YWxsX2R1cmF0aW9uX21zGAIgASgBIlgKF1NldFdhbGxEdXJhdGlvblJlc3BvbnNlEhUKDXNpbXVsYXRpb25faWQYASABKAkSJgoGc3RhdHVzGAIgASgOMhYubG9hZGxpbmUudjEuUnVuU3RhdHVzImIKDENvbnRyb2xGcmFtZRIVCg1zaW11bGF0aW9uX2lkGAEgASgJEiYKBnN0YXR1cxgCIAEoDjIWLmxvYWRsaW5lLnYxLlJ1blN0YXR1cxITCgtzaW1fdGltZV9tcxgDIAEoASKLAQoSQ29tcG9uZW50T2NjdXBhbmN5EhQKDGNvbXBvbmVudF9pZBgBIAEoCRITCgtxdWV1ZV9kZXB0aBgCIAEoBRIRCglpbl9mbGlnaHQYAyABKAUSDwoHYXJyaXZlZBgEIAEoBBIRCgljb21wbGV0ZWQYBSABKAQSEwoLdXRpbGl6YXRpb24YBiABKAEiMwoaR2V0U2ltdWxhdGlvblN0YXR1c1JlcXVlc3QSFQoNc2ltdWxhdGlvbl9pZBgBIAEoCSKcAQobR2V0U2ltdWxhdGlvblN0YXR1c1Jlc3BvbnNlEhUKDXNpbXVsYXRpb25faWQYASABKAkSJgoGc3RhdHVzGAIgASgOMhYubG9hZGxpbmUudjEuUnVuU3RhdHVzEg0KBWVycm9yGAMgASgJEi8KCHByb2dyZXNzGAQgASgLMh0ubG9hZGxpbmUudjEuUHJvZ3Jlc3NTbmFwc2hvdCItChRTdHJlYW1NZXRyaWNzUmVxdWVzdBIVCg1zaW11bGF0aW9uX2lkGAEgASgJIusBChVTdHJlYW1NZXRyaWNzUmVzcG9uc2USMQoIcHJvZ3Jlc3MYASABKAsyHS5sb2FkbGluZS52MS5Qcm9ncmVzc1NuYXBzaG90SAASOgoGc3RhdHVzGAIgASgLMigubG9hZGxpbmUudjEuR2V0U2ltdWxhdGlvblN0YXR1c1Jlc3BvbnNlSAASLAoHcmVzdWx0cxgDIAEoCzIZLmxvYWRsaW5lLnYxLkZpbmFsUmVzdWx0c0gAEiwKB2NvbnRyb2wYBCABKAsyGS5sb2FkbGluZS52MS5Db250cm9sRnJhbWVIAEIHCgVldmVudCLmAgoQQ29tcG9uZW50TWV0cmljcxIKCgJpZBgBIAEoCRIMCgRraW5kGAIgASgJEg8KB2Fycml2ZWQYAyABKAQSEQoJY29tcGxldGVkGAQgASgEEhAKCHJlamVjdGVkGAUgASgEEg4KBmZhaWxlZBgGIAEoBBITCgtxdWV1ZV9kZXB0aBgHIAEoBRIXCg9tYXhfcXVldWVfZGVwdGgYCCABKAUSEQoJaW5fZmxpZ2h0GAkgASgFEhMKC3V0aWxpemF0aW9uGAogASgBEhkKEWF2Z19xdWV1ZV93YWl0X21zGAsgASgBEhYKDmF2Z19zZXJ2aWNlX21zGAwgASgBEhYKDnRocm91Z2hwdXRfcnBzGA0gASgBEhMKC2Fycml2YWxfcnBzGA4gASgBEhQKDGNhcGFjaXR5X3JwcxgPIAEoARITCgtxdWV1ZV90cmVuZBgQIAEoCRIRCglzYXR1cmF0ZWQYESABKAginAEKDUZhaWx1cmVSZWNvcmQSEgoKcmVxdWVzdF9pZBgBIAEoBBIUCgxjb21wb25lbnRfaWQYAiABKAkSEQoJY2FsbGVyX2lkGAMgASgJEgwKBGtpbmQYBCABKAkSDwoHYXR0ZW1wdBgFIAEoBRINCgVhdF9tcxgGIAEoARISCgpsYXRlbmN5X21zGAcgASgBEgwKBHBhdGgYCCADKAki3wIKDVN5c3RlbU1ldHJpY3MSEwoLZHVyYXRpb25fbXMYASABKAESEQoJZ2VuZXJhdGVkGAIgASgEEhEKCWNvbXBsZXRlZBgDIAEoBBIQCghyZWplY3RlZBgEIAEoBBIOCgZmYWlsZWQYBSABKAQSEAoIdGltZW91dHMYBiABKAQSDwoHZHJvcHBlZBgHIAEoBBIRCglpbl9mbGlnaHQYCCABKAQSEgoKZXJyb3JfcmF0ZRgJIAEoARIUCgx0aW1lb3V0X3JhdGUYCiABKAESFgoOYXZnX2xhdGVuY3lfbXMYCyABKAESDgoGcDUwX21zGAwgASgBEg4KBnA5NV9tcxgNIAEoARIOCgZwOTlfbXMYDiABKAESFgoObWF4X2xhdGVuY3lfbXMYDyABKAESMQoKY29tcG9uZW50cxgQIAMoCzIdLmxvYWRsaW5lLnYxLkNvbXBvbmVudE1ldHJpY3MibQoKUnVuU3VtbWFyeRIYChBldmVudHNfcHJvY2Vzc2VkGAEgASgEEhgKEGV2ZW50c19zY2hlZHVsZWQYAiABKAQSFgoOZXZlbnRzX3BlbmRpbmcYAyABKAUSEwoLc3RvcF9yZWFzb24YBCABKAkiKgoRR2V0UmVzdWx0c1JlcXVlc3QSFQoNc2ltdWxhdGlvbl9pZBgBIAEoCSLVAQoSR2V0UmVzdWx0c1Jlc3BvbnNlEhUKDXNpbXVsYXRpb25faWQYAiABKAkSIwoEcGxhbhgDIAEoCzIVLmxvYWRsaW5lLnYxLkxvYWRQbGFuEisKB21ldHJpY3MYBCABKAsyGi5sb2FkbGluZS52MS5TeXN0ZW1NZXRyaWNzEiwKCGZhaWx1cmVzGAUgAygLMhoubG9hZGxpbmUudjEuRmFpbHVyZVJlY29yZBIoCgdzdW1tYXJ5GAYgASgLMhcubG9hZGxpbmUudjEuUnVuU3VtbWFyeSK4AQoMRmluYWxSZXN1bHRzEiMKBHBsYW4YASABKAsyFS5sb2FkbGluZS52MS5Mb2FkUGxhbhIrCgdtZXRyaWNzGAIgASgLMhoubG9hZGxpbmUudjEuU3lzdGVtTWV0cmljcxIsCghmYWlsdXJlcxgDIAMoCzIaLmxvYWRsaW5lLnYxLkZhaWx1cmVSZWNvcmQSKAoHc3VtbWFyeRgEIAEoCzIXLmxvYWRsaW5lLnYxLlJ1blN1bW1hcnkiZAoKQm90dGxlbmVjaxIUCgxjb21wb25lbnRfaWQYASABKAkSDAoEa2luZBgCIAEoCRIQCghzZXZlcml0eRgDIAEoCRIPCgdyZWFzb25zGAQgAygJEg8KB2ltcGFjdHMYBSADKAkibAoJRGlhZ25vc2lzEiwKC2JvdHRsZW5lY2tzGAEgAygLMhcubG9hZGxpbmUudjEuQm90dGxlbmVjaxIPCgdpbXBhY3RzGAIgAygJEg8KB2hlYWx0aHkYAyABKAgSDwoHc3VtbWFyeRgEIAEoCSJMChNHZXREaWFnbm9zaXNSZXF1ZXN0EhUKDXNpbXVsYXRpb25faWQYASABKAkSHgoWYmFzZWxpbmVfc2ltdWxhdGlvbl9pZBgCIAEoCSJYChRHZXREaWFnbm9zaXNSZXNwb25zZRIVCg1zaW11bGF0aW9uX2lkGAEgASgJEikKCWRpYWdub3NpcxgCIAEoCzIWLmxvYWRsaW5lLnYxLkRpYWdub3NpcyLeAQoOQ2FwYWNpdHlSZXBvcnQSFAoMY29tcG9uZW50X2lkGAEgASgJEhAKCHByb3ZpZGVyGAIgASgJEg8KB3NlcnZpY2UYAyABKAkSEwoLY3VycmVudF9ycHMYBCABKAESGwoTbWF4X3N1c3RhaW5hYmxlX3JwcxgFIAEoARITCgt1dGlsaXphdGlvbhgGIAEoARIQCghoZWFkcm9vbRgHIAEoARIRCglzYXR1cmF0ZWQYCCABKAgSEgoKYm90dGxlbmVjaxgJIAEoCBITCgthc3N1bXB0aW9ucxgKIAMoCSJCChJHZXRDYXBhY2l0eVJlcXVlc3QSFQoNc2ltdWxhdGlvbl9pZBgBIAEoCRIVCg1jb21wb25lbnRfaWRzGAIgAygJIloKE0dldENhcGFjaXR5UmVzcG9uc2USFQoNc2ltdWxhdGlvbl9pZBgBIAEoCRIsCgdyZXBvcnRzGAIgAygLMhsubG9hZGxpbmUudjEuQ2FwYWNpdHlSZXBvcnQilQEKDENvc3RMaW5lSXRlbRIUCgxjb21wb25lbnRfaWQYASABKAkSEAoIY2F0ZWdvcnkYAiABKAkSEwoLZGVzY3JpcHRpb24YAyABKAkSEAoIcXVhbnRpdHkYBCABKAESDAoEdW5pdBgFIAEoCRISCgp1bml0X3ByaWNlGAYgASgBEhQKDG1vbnRobHlfY29zdBgHIAEoASKIAQoNQ29tcG9uZW50Q29zdBIUCgxjb21wb25lbnRfaWQYASABKAkSEAoIcHJvdmlkZXIYAiABKAkSDwoHc2VydmljZRgDIAEoCRItCgpsaW5lX2l0ZW1zGAQgAygLMhkubG9hZGxpbmUudjEuQ29zdExpbmVJdGVtEg8KB21vbnRobHkYBSABKAEi5wEKDENvc3RFc3RpbWF0ZRIQCghjdXJyZW5jeRgBIAEoCRINCgV0b3RhbBgCIAEoARI+CgtieV9jYXRlZ29yeRgDIAMoCzIpLmxvYWRsaW5lLnYxLkNvc3RFc3RpbWF0ZS5CeUNhdGVnb3J5RW50cnkSLgoKY29tcG9uZW50cxgEIAMoCzIaLmxvYWRsaW5lLnYxLkNvbXBvbmVudENvc3QSEwoLYXNzdW1wdGlvbnMYBSADKAkaMQoPQnlDYXRlZ29yeUVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoAToCOAEiLwoWR2V0Q29zdEVzdGltYXRlUmVxdWVzdBIVCg1zaW11bGF0aW9uX2lkGAEgASgJIl0KF0dldENvc3RFc3RpbWF0ZVJlc3BvbnNlEhUKDXNpbXVsYXRpb25faWQYASABKAkSKwoIZXN0aW1hdGUYAiABKAsyGS5sb2FkbGluZS52MS5Db3N0RXN0aW1hdGUijgIKDkNhdGFsb2dTZXJ2aWNlEhAKCHByb3ZpZGVyGAEgASgJEg8KB3NlcnZpY2UYAiABKAkSDwoHc3VtbWFyeRgDIAEoCRIWCg5jb21wb25lbnRfa2luZBgEIAEoCRITCgtjb25jdXJyZW5jeRgFIAEoBRITCgtxdWV1ZV9saW1pdBgGIAEoBRITCgttb2RlbGVkX3JwcxgHIAEoARIfChdkZWZhdWx0X3NlcnZpY2VfdGltZV9tcxgIIAEoARIUCgxzY2FsaW5nX2tpbmQYCSABKAkSGQoRcGVyX3JlcXVlc3RfcHJpY2UYCiABKAESHwoXcGVyX2luc3RhbmNlX2hvdXJfcHJpY2UYCyABKAEiFAoSTGlzdENhdGFsb2dSZXF1ZXN0IkQKE0xpc3RDYXRhbG9nUmVzcG9uc2USLQoIc2VydmljZXMYASADKAsyGy5sb2FkbGluZS52MS5DYXRhbG9nU2VydmljZSq2AgoNQ29tcG9uZW50S2luZBIeChpDT01QT05FTlRfS0lORF9VTlNQRUNJRklFRBAAEhkKFUNPTVBPTkVOVF9LSU5EX0NMSUVOVBABEiAKHENPTVBPTkVOVF9LSU5EX0xPQURfQkFMQU5DRVIQAhIdChlDT01QT05FTlRfS0lORF9BUElfU0VSVkVSEAMSGAoUQ09NUE9ORU5UX0tJTkRfQ0FDSEUQBBIYChRDT01QT05FTlRfS0lORF9RVUVVRRAFEhkKFUNPTVBPTkVOVF9LSU5EX1dPUktFUhAGEhsKF0NPTVBPTkVOVF9LSU5EX0RBVEFCQVNFEAcSIQodQ09NUE9ORU5UX0tJTkRfT0JKRUNUX1NUT1JBR0UQCBIaChZDT01QT05FTlRfS0lORF9ORVRXT1JLEAkqsAEKC0ZhaWx1cmVUeXBlEhwKGEZBSUxVUkVfVFlQRV9VTlNQRUNJRklFRBAAEhYKEkZBSUxVUkVfVFlQRV9DUkFTSBABEiIKHkZBSUxVUkVfVFlQRV9JTkNSRUFTRURfTEFURU5DWRACEiUKIUZBSUxVUkVfVFlQRV9JTkNSRUFTRURfRVJST1JfUkFURRADEiAKHEZBSUxVUkVfVFlQRV9ORVRXT1JLX0ZBSUxVUkUQBCrQAQoJUnVuU3RhdHVzEhoKFlJVTl9TVEFUVVNfVU5TUEVDSUZJRUQQABIWChJSVU5fU1RBVFVTX1BFTkRJTkcQARIWChJSVU5fU1RBVFVTX1JVTk5JTkcQAhIYChRSVU5fU1RBVFVTX0NPTVBMRVRFRBADEhUKEVJVTl9TVEFUVVNfRkFJTEVEEAQSFQoRUlVOX1NUQVRVU19QQVVTRUQQBRIXChNSVU5fU1RBVFVTX1NUT1BQSU5HEAYSFgoSUlVOX1NUQVRVU19TVE9QUEVEEAcyrgkKEVNpbXVsYXRpb25TZXJ2aWNlEl8KEENyZWF0ZVNpbXVsYXRpb24SJC5sb2FkbGluZS52MS5DcmVhdGVTaW11bGF0aW9uUmVxdWVzdBolLmxvYWRsaW5lLnYxLkNyZWF0ZVNpbXVsYXRpb25SZXNwb25zZRJWCg1SdW5TaW11bGF0aW9uEiEubG9hZGxpbmUudjEuUnVuU2ltdWxhdGlvblJlcXVlc3QaIi5sb2FkbGluZS52MS5SdW5TaW11bGF0aW9uUmVzcG9uc2USaAoTR2V0U2ltdWxhdGlvblN0YXR1cxInLmxvYWRsaW5lLnYxLkdldFNpbXVsYXRpb25TdGF0dXNSZXF1ZXN0GigubG9hZGxpbmUudjEuR2V0U2ltdWxhdGlvblN0YXR1c1Jlc3BvbnNlElgKDVN0cmVhbU1ldHJpY3MSIS5sb2FkbGluZS52MS5TdHJlYW1NZXRyaWNzUmVxdWVzdBoiLmxvYWRsaW5lLnYxLlN0cmVhbU1ldHJpY3NSZXNwb25zZTABElwKD1BhdXNlU2ltdWxhdGlvbhIjLmxvYWRsaW5lLnYxLlBhdXNlU2ltdWxhdGlvblJlcXVlc3QaJC5sb2FkbGluZS52MS5QYXVzZVNpbXVsYXRpb25SZXNwb25zZRJfChBSZXN1bWVTaW11bGF0aW9uEiQubG9hZGxpbmUudjEuUmVzdW1lU2ltdWxhdGlvblJlcXVlc3QaJS5sb2FkbGluZS52MS5SZXN1bWVTaW11bGF0aW9uUmVzcG9uc2USWQoOU3RvcFNpbXVsYXRpb24SIi5sb2FkbGluZS52MS5TdG9wU2ltdWxhdGlvblJlcXVlc3QaIy5sb2FkbGluZS52MS5TdG9wU2ltdWxhdGlvblJlc3BvbnNlElwKD1NldFdhbGxEdXJhdGlvbhIjLmxvYWRsaW5lLnYxLlNldFdhbGxEdXJhdGlvblJlcXVlc3QaJC5sb2FkbGluZS52MS5TZXRXYWxsRHVyYXRpb25SZXNwb25zZRJNCgpHZXRSZXN1bHRzEh4ubG9hZGxpbmUudjEuR2V0UmVzdWx0c1JlcXVlc3QaHy5sb2FkbGluZS52MS5HZXRSZXN1bHRzUmVzcG9uc2USUwoMR2V0RGlhZ25vc2lzEiAubG9hZGxpbmUudjEuR2V0RGlhZ25vc2lzUmVxdWVzdBohLmxvYWRsaW5lLnYxLkdldERpYWdub3Npc1Jlc3BvbnNlElAKC0dldENhcGFjaXR5Eh8ubG9hZGxpbmUudjEuR2V0Q2FwYWNpdHlSZXF1ZXN0GiAubG9hZGxpbmUudjEuR2V0Q2FwYWNpdHlSZXNwb25zZRJcCg9HZXRDb3N0RXN0aW1hdGUSIy5sb2FkbGluZS52MS5HZXRDb3N0RXN0aW1hdGVSZXF1ZXN0GiQubG9hZGxpbmUudjEuR2V0Q29zdEVzdGltYXRlUmVzcG9uc2USUAoLTGlzdENhdGFsb2cSHy5sb2FkbGluZS52MS5MaXN0Q2F0YWxvZ1JlcXVlc3QaIC5sb2FkbGluZS52MS5MaXN0Q2F0YWxvZ1Jlc3BvbnNlQkRaQmdpdGh1Yi5jb20va2VrdWJoYWkvTG9hZGxpbmUvYXBwcy9zaW11bGF0b3IvbG9hZGxpbmUvdjE7bG9hZGxpbmV2MWIGcHJvdG8z");
 
 /**
  * ComponentSpec is one node in the architecture. Every field is a
@@ -582,6 +582,16 @@ export type RunSimulationRequest = Message<"loadline.v1.RunSimulationRequest"> &
    * @generated from field: string simulation_id = 1;
    */
   simulationId: string;
+
+  /**
+   * Wall-clock duration the FULL horizon should take at 1x speed.
+   * 0 (default) = run as fast as possible. A paced run is interactively
+   * pausable/stoppable at natural sampling boundaries; results are
+   * identical at any pacing.
+   *
+   * @generated from field: double wall_duration_ms = 2;
+   */
+  wallDurationMs: number;
 };
 
 /**
@@ -650,6 +660,27 @@ export type ProgressSnapshot = Message<"loadline.v1.ProgressSnapshot"> & {
    * @generated from field: repeated loadline.v1.ComponentOccupancy components = 7;
    */
   components: ComponentOccupancy[];
+
+  /**
+   * Wall-clock milliseconds elapsed since the run started. Sim time vs
+   * wall time makes the pacing mode visible (accelerated runs finish
+   * long before the wall duration).
+   *
+   * @generated from field: double wall_elapsed_ms = 8;
+   */
+  wallElapsedMs: number;
+
+  /**
+   * Engine counters: events processed so far and still queued.
+   *
+   * @generated from field: uint64 events_processed = 9;
+   */
+  eventsProcessed: bigint;
+
+  /**
+   * @generated from field: int64 events_pending = 10;
+   */
+  eventsPending: bigint;
 };
 
 /**
@@ -658,6 +689,220 @@ export type ProgressSnapshot = Message<"loadline.v1.ProgressSnapshot"> & {
  */
 export const ProgressSnapshotSchema: GenMessage<ProgressSnapshot> = /*@__PURE__*/
   messageDesc(file_loadline_v1_simulation, 14);
+
+/**
+ * PauseSimulationRequest pauses a run at the current simulated instant.
+ *
+ * @generated from message loadline.v1.PauseSimulationRequest
+ */
+export type PauseSimulationRequest = Message<"loadline.v1.PauseSimulationRequest"> & {
+  /**
+   * @generated from field: string simulation_id = 1;
+   */
+  simulationId: string;
+};
+
+/**
+ * Describes the message loadline.v1.PauseSimulationRequest.
+ * Use `create(PauseSimulationRequestSchema)` to create a new message.
+ */
+export const PauseSimulationRequestSchema: GenMessage<PauseSimulationRequest> = /*@__PURE__*/
+  messageDesc(file_loadline_v1_simulation, 15);
+
+/**
+ * @generated from message loadline.v1.PauseSimulationResponse
+ */
+export type PauseSimulationResponse = Message<"loadline.v1.PauseSimulationResponse"> & {
+  /**
+   * @generated from field: string simulation_id = 1;
+   */
+  simulationId: string;
+
+  /**
+   * @generated from field: loadline.v1.RunStatus status = 2;
+   */
+  status: RunStatus;
+};
+
+/**
+ * Describes the message loadline.v1.PauseSimulationResponse.
+ * Use `create(PauseSimulationResponseSchema)` to create a new message.
+ */
+export const PauseSimulationResponseSchema: GenMessage<PauseSimulationResponse> = /*@__PURE__*/
+  messageDesc(file_loadline_v1_simulation, 16);
+
+/**
+ * ResumeSimulationRequest un-pauses a run, optionally re-targeting the
+ * wall-clock pacing in the same call.
+ *
+ * @generated from message loadline.v1.ResumeSimulationRequest
+ */
+export type ResumeSimulationRequest = Message<"loadline.v1.ResumeSimulationRequest"> & {
+  /**
+   * @generated from field: string simulation_id = 1;
+   */
+  simulationId: string;
+
+  /**
+   * 0 = keep the current pacing.
+   *
+   * @generated from field: double wall_duration_ms = 2;
+   */
+  wallDurationMs: number;
+};
+
+/**
+ * Describes the message loadline.v1.ResumeSimulationRequest.
+ * Use `create(ResumeSimulationRequestSchema)` to create a new message.
+ */
+export const ResumeSimulationRequestSchema: GenMessage<ResumeSimulationRequest> = /*@__PURE__*/
+  messageDesc(file_loadline_v1_simulation, 17);
+
+/**
+ * @generated from message loadline.v1.ResumeSimulationResponse
+ */
+export type ResumeSimulationResponse = Message<"loadline.v1.ResumeSimulationResponse"> & {
+  /**
+   * @generated from field: string simulation_id = 1;
+   */
+  simulationId: string;
+
+  /**
+   * @generated from field: loadline.v1.RunStatus status = 2;
+   */
+  status: RunStatus;
+};
+
+/**
+ * Describes the message loadline.v1.ResumeSimulationResponse.
+ * Use `create(ResumeSimulationResponseSchema)` to create a new message.
+ */
+export const ResumeSimulationResponseSchema: GenMessage<ResumeSimulationResponse> = /*@__PURE__*/
+  messageDesc(file_loadline_v1_simulation, 18);
+
+/**
+ * StopSimulationRequest stops a run before its horizon.
+ *
+ * @generated from message loadline.v1.StopSimulationRequest
+ */
+export type StopSimulationRequest = Message<"loadline.v1.StopSimulationRequest"> & {
+  /**
+   * @generated from field: string simulation_id = 1;
+   */
+  simulationId: string;
+};
+
+/**
+ * Describes the message loadline.v1.StopSimulationRequest.
+ * Use `create(StopSimulationRequestSchema)` to create a new message.
+ */
+export const StopSimulationRequestSchema: GenMessage<StopSimulationRequest> = /*@__PURE__*/
+  messageDesc(file_loadline_v1_simulation, 19);
+
+/**
+ * @generated from message loadline.v1.StopSimulationResponse
+ */
+export type StopSimulationResponse = Message<"loadline.v1.StopSimulationResponse"> & {
+  /**
+   * @generated from field: string simulation_id = 1;
+   */
+  simulationId: string;
+
+  /**
+   * @generated from field: loadline.v1.RunStatus status = 2;
+   */
+  status: RunStatus;
+};
+
+/**
+ * Describes the message loadline.v1.StopSimulationResponse.
+ * Use `create(StopSimulationResponseSchema)` to create a new message.
+ */
+export const StopSimulationResponseSchema: GenMessage<StopSimulationResponse> = /*@__PURE__*/
+  messageDesc(file_loadline_v1_simulation, 20);
+
+/**
+ * SetWallDurationRequest re-targets the pacing of a live run without
+ * pausing it.
+ *
+ * @generated from message loadline.v1.SetWallDurationRequest
+ */
+export type SetWallDurationRequest = Message<"loadline.v1.SetWallDurationRequest"> & {
+  /**
+   * @generated from field: string simulation_id = 1;
+   */
+  simulationId: string;
+
+  /**
+   * Wall-clock duration the FULL horizon should take. 0 restores the
+   * default 1s-of-sim-per-second. Pacing stays exact at every speed.
+   *
+   * @generated from field: double wall_duration_ms = 2;
+   */
+  wallDurationMs: number;
+};
+
+/**
+ * Describes the message loadline.v1.SetWallDurationRequest.
+ * Use `create(SetWallDurationRequestSchema)` to create a new message.
+ */
+export const SetWallDurationRequestSchema: GenMessage<SetWallDurationRequest> = /*@__PURE__*/
+  messageDesc(file_loadline_v1_simulation, 21);
+
+/**
+ * @generated from message loadline.v1.SetWallDurationResponse
+ */
+export type SetWallDurationResponse = Message<"loadline.v1.SetWallDurationResponse"> & {
+  /**
+   * @generated from field: string simulation_id = 1;
+   */
+  simulationId: string;
+
+  /**
+   * @generated from field: loadline.v1.RunStatus status = 2;
+   */
+  status: RunStatus;
+};
+
+/**
+ * Describes the message loadline.v1.SetWallDurationResponse.
+ * Use `create(SetWallDurationResponseSchema)` to create a new message.
+ */
+export const SetWallDurationResponseSchema: GenMessage<SetWallDurationResponse> = /*@__PURE__*/
+  messageDesc(file_loadline_v1_simulation, 22);
+
+/**
+ * ControlFrame is broadcast on every run-control state change (pause,
+ * resume, stop, speed change, completion) so StreamMetrics subscribers
+ * see the run's operational state, not just its metrics.
+ *
+ * @generated from message loadline.v1.ControlFrame
+ */
+export type ControlFrame = Message<"loadline.v1.ControlFrame"> & {
+  /**
+   * @generated from field: string simulation_id = 1;
+   */
+  simulationId: string;
+
+  /**
+   * @generated from field: loadline.v1.RunStatus status = 2;
+   */
+  status: RunStatus;
+
+  /**
+   * Simulated time the transition took effect at.
+   *
+   * @generated from field: double sim_time_ms = 3;
+   */
+  simTimeMs: number;
+};
+
+/**
+ * Describes the message loadline.v1.ControlFrame.
+ * Use `create(ControlFrameSchema)` to create a new message.
+ */
+export const ControlFrameSchema: GenMessage<ControlFrame> = /*@__PURE__*/
+  messageDesc(file_loadline_v1_simulation, 23);
 
 /**
  * ComponentOccupancy is one component's instantaneous state.
@@ -701,7 +946,7 @@ export type ComponentOccupancy = Message<"loadline.v1.ComponentOccupancy"> & {
  * Use `create(ComponentOccupancySchema)` to create a new message.
  */
 export const ComponentOccupancySchema: GenMessage<ComponentOccupancy> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 15);
+  messageDesc(file_loadline_v1_simulation, 24);
 
 /**
  * GetSimulationStatusRequest polls one simulation's state.
@@ -720,7 +965,7 @@ export type GetSimulationStatusRequest = Message<"loadline.v1.GetSimulationStatu
  * Use `create(GetSimulationStatusRequestSchema)` to create a new message.
  */
 export const GetSimulationStatusRequestSchema: GenMessage<GetSimulationStatusRequest> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 16);
+  messageDesc(file_loadline_v1_simulation, 25);
 
 /**
  * @generated from message loadline.v1.GetSimulationStatusResponse
@@ -756,7 +1001,7 @@ export type GetSimulationStatusResponse = Message<"loadline.v1.GetSimulationStat
  * Use `create(GetSimulationStatusResponseSchema)` to create a new message.
  */
 export const GetSimulationStatusResponseSchema: GenMessage<GetSimulationStatusResponse> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 17);
+  messageDesc(file_loadline_v1_simulation, 26);
 
 /**
  * StreamMetricsRequest subscribes to a run's progress and completion.
@@ -776,7 +1021,7 @@ export type StreamMetricsRequest = Message<"loadline.v1.StreamMetricsRequest"> &
  * Use `create(StreamMetricsRequestSchema)` to create a new message.
  */
 export const StreamMetricsRequestSchema: GenMessage<StreamMetricsRequest> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 18);
+  messageDesc(file_loadline_v1_simulation, 27);
 
 /**
  * @generated from message loadline.v1.StreamMetricsResponse
@@ -803,6 +1048,12 @@ export type StreamMetricsResponse = Message<"loadline.v1.StreamMetricsResponse">
      */
     value: FinalResults;
     case: "results";
+  } | {
+    /**
+     * @generated from field: loadline.v1.ControlFrame control = 4;
+     */
+    value: ControlFrame;
+    case: "control";
   } | { case: undefined; value?: undefined };
 };
 
@@ -811,7 +1062,7 @@ export type StreamMetricsResponse = Message<"loadline.v1.StreamMetricsResponse">
  * Use `create(StreamMetricsResponseSchema)` to create a new message.
  */
 export const StreamMetricsResponseSchema: GenMessage<StreamMetricsResponse> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 19);
+  messageDesc(file_loadline_v1_simulation, 28);
 
 /**
  * ComponentMetrics is the per-component report. Definitions match
@@ -915,7 +1166,7 @@ export type ComponentMetrics = Message<"loadline.v1.ComponentMetrics"> & {
  * Use `create(ComponentMetricsSchema)` to create a new message.
  */
 export const ComponentMetricsSchema: GenMessage<ComponentMetrics> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 20);
+  messageDesc(file_loadline_v1_simulation, 29);
 
 /**
  * FailureRecord summarizes one request-level failure.
@@ -969,7 +1220,7 @@ export type FailureRecord = Message<"loadline.v1.FailureRecord"> & {
  * Use `create(FailureRecordSchema)` to create a new message.
  */
 export const FailureRecordSchema: GenMessage<FailureRecord> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 21);
+  messageDesc(file_loadline_v1_simulation, 30);
 
 /**
  * SystemMetrics is the system-wide result. Latency percentiles are
@@ -1065,7 +1316,7 @@ export type SystemMetrics = Message<"loadline.v1.SystemMetrics"> & {
  * Use `create(SystemMetricsSchema)` to create a new message.
  */
 export const SystemMetricsSchema: GenMessage<SystemMetrics> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 22);
+  messageDesc(file_loadline_v1_simulation, 31);
 
 /**
  * RunSummary reports engine-level counters for the run.
@@ -1099,7 +1350,7 @@ export type RunSummary = Message<"loadline.v1.RunSummary"> & {
  * Use `create(RunSummarySchema)` to create a new message.
  */
 export const RunSummarySchema: GenMessage<RunSummary> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 23);
+  messageDesc(file_loadline_v1_simulation, 32);
 
 /**
  * GetResultsRequest fetches the final results of a completed run.
@@ -1118,7 +1369,7 @@ export type GetResultsRequest = Message<"loadline.v1.GetResultsRequest"> & {
  * Use `create(GetResultsRequestSchema)` to create a new message.
  */
 export const GetResultsRequestSchema: GenMessage<GetResultsRequest> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 24);
+  messageDesc(file_loadline_v1_simulation, 33);
 
 /**
  * @generated from message loadline.v1.GetResultsResponse
@@ -1155,7 +1406,7 @@ export type GetResultsResponse = Message<"loadline.v1.GetResultsResponse"> & {
  * Use `create(GetResultsResponseSchema)` to create a new message.
  */
 export const GetResultsResponseSchema: GenMessage<GetResultsResponse> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 25);
+  messageDesc(file_loadline_v1_simulation, 34);
 
 /**
  * FinalResults is the results payload delivered on the metrics stream
@@ -1190,7 +1441,7 @@ export type FinalResults = Message<"loadline.v1.FinalResults"> & {
  * Use `create(FinalResultsSchema)` to create a new message.
  */
 export const FinalResultsSchema: GenMessage<FinalResults> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 26);
+  messageDesc(file_loadline_v1_simulation, 35);
 
 /**
  * Bottleneck is one flagged component with machine-computed evidence.
@@ -1231,7 +1482,7 @@ export type Bottleneck = Message<"loadline.v1.Bottleneck"> & {
  * Use `create(BottleneckSchema)` to create a new message.
  */
 export const BottleneckSchema: GenMessage<Bottleneck> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 27);
+  messageDesc(file_loadline_v1_simulation, 36);
 
 /**
  * Diagnosis is the automatic bottleneck report.
@@ -1265,7 +1516,7 @@ export type Diagnosis = Message<"loadline.v1.Diagnosis"> & {
  * Use `create(DiagnosisSchema)` to create a new message.
  */
 export const DiagnosisSchema: GenMessage<Diagnosis> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 28);
+  messageDesc(file_loadline_v1_simulation, 37);
 
 /**
  * GetDiagnosisRequest fetches the diagnosis. When baseline_simulation_id
@@ -1292,7 +1543,7 @@ export type GetDiagnosisRequest = Message<"loadline.v1.GetDiagnosisRequest"> & {
  * Use `create(GetDiagnosisRequestSchema)` to create a new message.
  */
 export const GetDiagnosisRequestSchema: GenMessage<GetDiagnosisRequest> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 29);
+  messageDesc(file_loadline_v1_simulation, 38);
 
 /**
  * @generated from message loadline.v1.GetDiagnosisResponse
@@ -1314,7 +1565,7 @@ export type GetDiagnosisResponse = Message<"loadline.v1.GetDiagnosisResponse"> &
  * Use `create(GetDiagnosisResponseSchema)` to create a new message.
  */
 export const GetDiagnosisResponseSchema: GenMessage<GetDiagnosisResponse> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 30);
+  messageDesc(file_loadline_v1_simulation, 39);
 
 /**
  * CapacityReport is the per-component capacity estimate. CurrentRPS is
@@ -1381,7 +1632,7 @@ export type CapacityReport = Message<"loadline.v1.CapacityReport"> & {
  * Use `create(CapacityReportSchema)` to create a new message.
  */
 export const CapacityReportSchema: GenMessage<CapacityReport> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 31);
+  messageDesc(file_loadline_v1_simulation, 40);
 
 /**
  * GetCapacityRequest fetches capacity estimates. Empty component_ids
@@ -1406,7 +1657,7 @@ export type GetCapacityRequest = Message<"loadline.v1.GetCapacityRequest"> & {
  * Use `create(GetCapacityRequestSchema)` to create a new message.
  */
 export const GetCapacityRequestSchema: GenMessage<GetCapacityRequest> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 32);
+  messageDesc(file_loadline_v1_simulation, 41);
 
 /**
  * @generated from message loadline.v1.GetCapacityResponse
@@ -1428,7 +1679,7 @@ export type GetCapacityResponse = Message<"loadline.v1.GetCapacityResponse"> & {
  * Use `create(GetCapacityResponseSchema)` to create a new message.
  */
 export const GetCapacityResponseSchema: GenMessage<GetCapacityResponse> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 33);
+  messageDesc(file_loadline_v1_simulation, 42);
 
 /**
  * CostLineItem is one priced element with its derivation.
@@ -1477,7 +1728,7 @@ export type CostLineItem = Message<"loadline.v1.CostLineItem"> & {
  * Use `create(CostLineItemSchema)` to create a new message.
  */
 export const CostLineItemSchema: GenMessage<CostLineItem> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 34);
+  messageDesc(file_loadline_v1_simulation, 43);
 
 /**
  * ComponentCost is one component's monthly estimate.
@@ -1516,7 +1767,7 @@ export type ComponentCost = Message<"loadline.v1.ComponentCost"> & {
  * Use `create(ComponentCostSchema)` to create a new message.
  */
 export const ComponentCostSchema: GenMessage<ComponentCost> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 35);
+  messageDesc(file_loadline_v1_simulation, 44);
 
 /**
  * CostEstimate is the full monthly estimate. It is always an ESTIMATE
@@ -1557,7 +1808,7 @@ export type CostEstimate = Message<"loadline.v1.CostEstimate"> & {
  * Use `create(CostEstimateSchema)` to create a new message.
  */
 export const CostEstimateSchema: GenMessage<CostEstimate> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 36);
+  messageDesc(file_loadline_v1_simulation, 45);
 
 /**
  * GetCostEstimateRequest fetches the monthly cost estimate derived from
@@ -1577,7 +1828,7 @@ export type GetCostEstimateRequest = Message<"loadline.v1.GetCostEstimateRequest
  * Use `create(GetCostEstimateRequestSchema)` to create a new message.
  */
 export const GetCostEstimateRequestSchema: GenMessage<GetCostEstimateRequest> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 37);
+  messageDesc(file_loadline_v1_simulation, 46);
 
 /**
  * @generated from message loadline.v1.GetCostEstimateResponse
@@ -1599,7 +1850,7 @@ export type GetCostEstimateResponse = Message<"loadline.v1.GetCostEstimateRespon
  * Use `create(GetCostEstimateResponseSchema)` to create a new message.
  */
 export const GetCostEstimateResponseSchema: GenMessage<GetCostEstimateResponse> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 38);
+  messageDesc(file_loadline_v1_simulation, 47);
 
 /**
  * CatalogService describes one provider service model.
@@ -1668,7 +1919,7 @@ export type CatalogService = Message<"loadline.v1.CatalogService"> & {
  * Use `create(CatalogServiceSchema)` to create a new message.
  */
 export const CatalogServiceSchema: GenMessage<CatalogService> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 39);
+  messageDesc(file_loadline_v1_simulation, 48);
 
 /**
  * ListCatalogRequest returns the full built-in provider catalog.
@@ -1683,7 +1934,7 @@ export type ListCatalogRequest = Message<"loadline.v1.ListCatalogRequest"> & {
  * Use `create(ListCatalogRequestSchema)` to create a new message.
  */
 export const ListCatalogRequestSchema: GenMessage<ListCatalogRequest> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 40);
+  messageDesc(file_loadline_v1_simulation, 49);
 
 /**
  * @generated from message loadline.v1.ListCatalogResponse
@@ -1700,7 +1951,7 @@ export type ListCatalogResponse = Message<"loadline.v1.ListCatalogResponse"> & {
  * Use `create(ListCatalogResponseSchema)` to create a new message.
  */
 export const ListCatalogResponseSchema: GenMessage<ListCatalogResponse> = /*@__PURE__*/
-  messageDesc(file_loadline_v1_simulation, 41);
+  messageDesc(file_loadline_v1_simulation, 50);
 
 /**
  * ComponentKind is the generic component class. The simulator only knows
@@ -1842,6 +2093,27 @@ export enum RunStatus {
    * @generated from enum value: RUN_STATUS_FAILED = 4;
    */
   FAILED = 4,
+
+  /**
+   * held at the current simulated instant
+   *
+   * @generated from enum value: RUN_STATUS_PAUSED = 5;
+   */
+  PAUSED = 5,
+
+  /**
+   * stop requested; draining the last event
+   *
+   * @generated from enum value: RUN_STATUS_STOPPING = 6;
+   */
+  STOPPING = 6,
+
+  /**
+   * stopped before the horizon; partial results
+   *
+   * @generated from enum value: RUN_STATUS_STOPPED = 7;
+   */
+  STOPPED = 7,
 }
 
 /**
@@ -1890,7 +2162,8 @@ export const SimulationService: GenService<{
   },
   /**
    * Stream progress snapshots while running, then status and final
-   * results; the stream ends after the terminal frame.
+   * results; the stream ends after the terminal frame. Control
+   * transitions (pause/resume/stop) are also broadcast on this stream.
    *
    * @generated from rpc loadline.v1.SimulationService.StreamMetrics
    */
@@ -1898,6 +2171,52 @@ export const SimulationService: GenService<{
     methodKind: "server_streaming";
     input: typeof StreamMetricsRequestSchema;
     output: typeof StreamMetricsResponseSchema;
+  },
+  /**
+   * Pause a RUNNING simulation at the current simulated instant. The
+   * engine finishes the in-flight event, then idles without advancing
+   * simulated time. Final metrics remain available on completion.
+   *
+   * @generated from rpc loadline.v1.SimulationService.PauseSimulation
+   */
+  pauseSimulation: {
+    methodKind: "unary";
+    input: typeof PauseSimulationRequestSchema;
+    output: typeof PauseSimulationResponseSchema;
+  },
+  /**
+   * Resume a PAUSED simulation, optionally re-targeting the wall-clock
+   * pacing in the same call.
+   *
+   * @generated from rpc loadline.v1.SimulationService.ResumeSimulation
+   */
+  resumeSimulation: {
+    methodKind: "unary";
+    input: typeof ResumeSimulationRequestSchema;
+    output: typeof ResumeSimulationResponseSchema;
+  },
+  /**
+   * Stop a RUNNING or PAUSED simulation before its horizon. The engine
+   * drains the in-flight event and publishes partial results (marked
+   * stopped, not completed); they stay queryable.
+   *
+   * @generated from rpc loadline.v1.SimulationService.StopSimulation
+   */
+  stopSimulation: {
+    methodKind: "unary";
+    input: typeof StopSimulationRequestSchema;
+    output: typeof StopSimulationResponseSchema;
+  },
+  /**
+   * SetWallDuration re-targets the wall-clock pacing of a live run
+   * without pausing it. 0 restores the default 1s-of-sim-per-second.
+   *
+   * @generated from rpc loadline.v1.SimulationService.SetWallDuration
+   */
+  setWallDuration: {
+    methodKind: "unary";
+    input: typeof SetWallDurationRequestSchema;
+    output: typeof SetWallDurationResponseSchema;
   },
   /**
    * Fetch final results of a completed run.

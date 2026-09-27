@@ -23,8 +23,6 @@ import {
 } from "react";
 import {
   ComponentKind,
-  FailureType,
-  RunStatus,
   createLoadlineClient,
 } from "@loadline/api";
 import type {
@@ -47,6 +45,10 @@ import type { CanvasHandles } from "../components/canvas";
 import { Inspector } from "../components/inspector";
 import type { ComponentPatch } from "../components/inspector";
 import { Palette } from "../components/palette";
+import { SimConsole } from "../components/simconsole";
+import type { SimOutcome } from "../components/simconsole";
+import { WorkloadPanel } from "../components/workloadpanel";
+import { FailurePanel } from "../components/failurepanel";
 import { f0, f1, f2, pct } from "../components/format";
 import {
   Badge,
@@ -405,12 +407,29 @@ function runReducer(s: RunState, a: RunAction): RunState {
   }
 }
 
-const STATUS: Record<Phase, { state: "ok" | "warn" | "bad" | "idle"; label: string }> = {
-  idle: { state: "idle", label: "idle" },
-  running: { state: "warn", label: "running" },
-  done: { state: "ok", label: "complete" },
-  error: { state: "bad", label: "error" },
-};
+/**
+ * Run-state derivation for the ops strip. The console owns the live
+ * RunStatus while a run executes (it sees the control frames); the page
+ * tracks the terminal outcome for the comparison-ready banner.
+ */
+interface PageRunState {
+  /** Live console status while a run is active. */
+  active: boolean;
+  /** Last terminal outcome of a console run. */
+  outcome: SimOutcome | null;
+}
+
+function pageStatus(s: PageRunState): { state: "ok" | "warn" | "bad" | "idle"; label: string } {
+  if (s.active) return { state: "warn", label: "running" };
+  switch (s.outcome?.status) {
+    case "completed":
+      return { state: "ok", label: `complete · ${s.outcome.simId}` };
+    case "stopped":
+      return { state: "bad", label: `stopped · ${s.outcome.simId}` };
+    default:
+      return { state: "idle", label: "idle" };
+  }
+}
 
 /* --------------------------------------------------------------- helpers -- */
 
@@ -475,7 +494,8 @@ export default function Home() {
   const [view, setView] = useState("architecture");
   const [catalog, setCatalog] = useState<CatalogService[] | null>(null);
   const [catalogError, setCatalogError] = useState("");
-  const [injectCrash, setInjectCrash] = useState(false);
+  /** Console-owned run state: active flag + last terminal outcome. */
+  const [pageRun, setPageRun] = useState<PageRunState>({ active: false, outcome: null });
 
   const canvasHandles = useRef<CanvasHandles | null>(null);
 
@@ -484,8 +504,6 @@ export default function Home() {
     () => createLoadlineClient({ baseUrl: serverUrl }),
     [serverUrl],
   );
-
-  const baselineIdRef = useRef<string | null>(null);
 
   // Fetch the provider catalog once per server URL; drives the palette.
   useEffect(() => {
@@ -616,83 +634,59 @@ export default function Home() {
 
   /* ------------------------------------------------------------- running -- */
 
-  async function run() {
-    runDispatch({ type: "reset" });
-    const arch = editor.architecture;
-    // The crash toggle appends a transient injection for this run only;
-    // it does not mutate the editor's failure list.
-    const failures: Failure[] = injectCrash
-      ? [
-          ...editor.failures,
-          {
-            target: "cache",
-            type: FailureType.CRASH,
-            startMs: 1_000,
-            durationMs: 5_000,
-            config: { passThrough: true },
-          },
-        ]
-      : [...editor.failures];
-    try {
-      const created = await client.createSimulation({
-        architecture: arch,
-        workload: editor.workload,
-        options:
-          failures.length > 0
-            ? { ...editor.options, failures }
-            : editor.options,
-      });
-      const id = created.simulation?.id ?? "";
-      runDispatch({ type: "created", id });
+  const baselineIdRef = useRef<string | null>(null);
 
-      const resultsPromise = (async () => {
-        await new Promise((r) => setTimeout(r, 20));
-        const stream = client.streamMetrics({ simulationId: id });
-        let final: FinalResults | null = null;
-        for await (const ev of stream) {
-          if (ev.event.case === "progress" && ev.event.value) {
-            runDispatch({ type: "progress", snap: ev.event.value });
+  /**
+   * Console finished a run. The console owns live control + results
+   * display; the page then fetches the analysis artifacts (diagnosis,
+   * capacity, cost) for the terminal run and tracks the healthy-run
+   * baseline for diagnosis comparison.
+   */
+  const onConsoleOutcome = useCallback(
+    (outcome: SimOutcome) => {
+      runDispatch({ type: "reset" });
+      const id = outcome.simId;
+      const healthy = editor.failures.length === 0;
+      if (healthy) baselineIdRef.current = id;
+
+      (async () => {
+        try {
+          const res = await client.getResults({ simulationId: id });
+          runDispatch({
+            type: "results",
+            results: {
+              plan: res.plan,
+              metrics: res.metrics,
+              failures: res.failures,
+              summary: res.summary,
+            },
+          });
+          const diag = await client.getDiagnosis({
+            simulationId: id,
+            baselineSimulationId: healthy ? "" : (baselineIdRef.current ?? ""),
+          });
+          if (diag.diagnosis) {
+            runDispatch({ type: "diagnosis", diagnosis: diag.diagnosis });
           }
-          if (ev.event.case === "status" && ev.event.value) {
-            const st = ev.event.value;
-            if (st.status !== RunStatus.COMPLETED) {
-              throw new Error(st.error || `simulation ended with ${st.status}`);
-            }
-          }
-          if (ev.event.case === "results" && ev.event.value) {
-            final = ev.event.value;
-          }
+          const cap = await client.getCapacity({ simulationId: id });
+          runDispatch({ type: "capacity", capacity: cap });
+          const cost = await client.getCostEstimate({ simulationId: id });
+          runDispatch({ type: "cost", cost });
+        } catch (e) {
+          // Analysis artifacts are best-effort: a stopped run or a
+          // generic (provider-less) architecture legitimately has no
+          // capacity/cost report. Surface the message, keep the results.
+          runDispatch({
+            type: "error",
+            message: e instanceof Error ? e.message : String(e),
+          });
         }
-        if (!final) throw new Error("stream ended without results");
-        return final;
       })();
+    },
+    [client, editor.failures.length],
+  );
 
-      await client.runSimulation({ simulationId: id });
-      const final = await resultsPromise;
-      if (failures.length === 0) baselineIdRef.current = id;
-
-      runDispatch({ type: "results", results: final });
-      const diag = await client.getDiagnosis({
-        simulationId: id,
-        baselineSimulationId:
-          failures.length > 0 ? (baselineIdRef.current ?? "") : "",
-      });
-      if (diag.diagnosis) runDispatch({ type: "diagnosis", diagnosis: diag.diagnosis });
-      try {
-        const cap = await client.getCapacity({ simulationId: id });
-        runDispatch({ type: "capacity", capacity: cap });
-        const cost = await client.getCostEstimate({ simulationId: id });
-        runDispatch({ type: "cost", cost });
-      } catch {
-        // Provider-backed estimates are absent for generic architectures —
-        // surfaced as missing panels, not errors.
-      }
-    } catch (e) {
-      runDispatch({ type: "error", message: e instanceof Error ? e.message : String(e) });
-    }
-  }
-
-  const status = STATUS[state.phase];
+  const status = pageStatus(pageRun);
   const m = state.results?.metrics;
 
   /* --------------------------------------------------- canvas projections -- */
@@ -774,10 +768,14 @@ export default function Home() {
           <StatusIndicator state={status.state} label={status.label} />
           <Button
             variant="primary"
-            disabled={state.phase === "running" || warnings.length > 0}
-            onClick={() => void run()}
+            disabled={pageRun.active || warnings.length > 0}
+            onClick={() => {
+              setView("simulation");
+              setPageRun({ active: false, outcome: null });
+              runDispatch({ type: "reset" });
+            }}
           >
-            {state.phase === "running" ? "simulating…" : "run"}
+            {pageRun.active ? "running…" : "new run"}
           </Button>
         </div>
       </header>
@@ -894,62 +892,82 @@ export default function Home() {
             <Field label="server">
               <Input value={serverUrl} onChange={setServerUrl} width={220} />
             </Field>
-            <Checkbox checked={injectCrash} onChange={setInjectCrash}>
-              also inject cache crash (t=1s → 6s)
-            </Checkbox>
             <span className="sim-toolbar-note">
-              edits in the architecture view define what runs · healthy runs are kept as the
-              diagnosis baseline
+              edits in the architecture view define what runs · the console executes them
             </span>
           </div>
 
-          {state.phase === "idle" && !state.error && (
-            <Panel title="Console">
-              <EmptyState>
-                no run yet — point the server field at the simulation backend and execute.
-              </EmptyState>
+          <SimConsole
+            architecture={editor.architecture}
+            workload={editor.workload}
+            options={
+              editor.failures.length > 0
+                ? { ...editor.options, failures: editor.failures }
+                : editor.options
+            }
+            serverUrl={serverUrl}
+            running={pageRun.active}
+            onRunningChange={(v) => setPageRun((p) => ({ ...p, active: v }))}
+            onOutcome={(o) => {
+              setPageRun((p) => ({ ...p, outcome: o }));
+              onConsoleOutcome(o);
+            }}
+          />
+
+          <div className="sim-columns">
+            <Panel title="Workload" tag="inputs + backend-derived plan">
+              <WorkloadPanel
+                workload={editor.workload}
+                onPatch={onPatchWorkload}
+                plan={state.results?.plan ?? null}
+              />
             </Panel>
-          )}
 
-          {state.results && m && (
-            <div className="sim-columns">
-              <Panel title="Results" tag={state.simId ?? undefined}>
-                <div className="metric-row">
-                  <Metric label="generated" value={f0(m.generated)} />
-                  <Metric label="completed" value={f0(m.completed)} />
-                  <Metric label="rejected" value={f0(m.rejected)} />
-                  <Metric label="failed" value={f0(m.failed)} />
-                  <Metric label="error rate" value={pct(m.errorRate)} />
-                  <Metric label="timeout rate" value={pct(m.timeoutRate)} />
-                </div>
-                <Divider />
-                <Section label="latency ms">
+            <Panel title="Failure injection" tag="applies to the next run">
+              <FailurePanel
+                components={editor.architecture.components
+                  .filter((c) => c.kind !== ComponentKind.CLIENT)
+                  .map((c) => ({
+                    id: c.id,
+                    label: c.provider ? `${c.id} · ${c.provider}/${c.service}` : c.id,
+                  }))}
+                failures={editor.failures}
+                onAdd={onAddFailure}
+                onRemove={onRemoveFailure}
+              />
+            </Panel>
+
+            {state.results && m && (
+              <>
+                <Panel
+                  title="Results"
+                  tag={
+                    state.simId
+                      ? `${state.simId} · stop reason ${state.results.summary?.stopReason ?? "n/a"}`
+                      : `stop reason ${state.results.summary?.stopReason ?? "n/a"}`
+                  }
+                >
                   <div className="metric-row">
-                    <Metric label="avg" value={f2(m.avgLatencyMs)} />
-                    <Metric label="p50" value={f2(m.p50Ms)} />
-                    <Metric label="p95" value={f2(m.p95Ms)} />
-                    <Metric label="p99" value={f2(m.p99Ms)} />
-                    <Metric label="max" value={f2(m.maxLatencyMs)} />
+                    <Metric label="generated" value={f0(m.generated)} />
+                    <Metric label="completed" value={f0(m.completed)} />
+                    <Metric label="rejected" value={f0(m.rejected)} />
+                    <Metric label="failed" value={f0(m.failed)} />
+                    <Metric label="error rate" value={pct(m.errorRate)} />
+                    <Metric label="timeout rate" value={pct(m.timeoutRate)} />
                   </div>
-                </Section>
-              </Panel>
+                  <Divider />
+                  <Section label="latency ms">
+                    <div className="metric-row">
+                      <Metric label="avg" value={f2(m.avgLatencyMs)} />
+                      <Metric label="p50" value={f2(m.p50Ms)} />
+                      <Metric label="p95" value={f2(m.p95Ms)} />
+                      <Metric label="p99" value={f2(m.p99Ms)} />
+                      <Metric label="max" value={f2(m.maxLatencyMs)} />
+                    </div>
+                  </Section>
+                </Panel>
 
-              <Panel title="Workload plan" tag="derived">
-                <p className="prose">
-                  DAU {state.results.plan?.dau?.toString()} of{" "}
-                  {state.results.plan?.totalUsers?.toString()} users →{" "}
-                  {f0(state.results.plan?.requestsPerDay)} req/day → avg{" "}
-                  {f1(state.results.plan?.averageRps)} RPS → peak{" "}
-                  {f1(state.results.plan?.peakRps)} RPS (×
-                  {f1(state.results.plan?.peakMultiplier)})
-                </p>
-                <p className="prose prose-dim">
-                  users → dau → requests/user/day → requests/day → average rps → peak multiplier →
-                  peak rps
-                </p>
-              </Panel>
-
-              <Panel title="Components">
+                <Panel title="Components">
                 <table>
                   <thead>
                     <tr>
@@ -1071,7 +1089,7 @@ export default function Home() {
                   </EmptyState>
                 )}
               </Panel>
-            </div>
+            </>
           )}
         </div>
       )}

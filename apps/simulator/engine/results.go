@@ -13,6 +13,9 @@ const (
 	StopHorizon StopReason = "horizon"
 	// StopMaxEvents means the run hit the processed-event limit.
 	StopMaxEvents StopReason = "max_events"
+	// StopStopped means the run was stopped by an explicit control action
+	// before its horizon; results are a partial view of the run.
+	StopStopped StopReason = "stopped"
 )
 
 // EventRecord is an immutable summary of one processed event, retained when

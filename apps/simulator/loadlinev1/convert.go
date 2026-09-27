@@ -362,12 +362,15 @@ func runSummaryToProto(r *engine.Results) *v1.RunSummary {
 // snapshotToProto converts a mid-run progress snapshot.
 func snapshotToProto(s sim.Snapshot) *v1.ProgressSnapshot {
 	out := &v1.ProgressSnapshot{
-		SimTimeMs: s.SimTimeMS,
-		Generated: s.Generated,
-		Completed: s.Completed,
-		Rejected:  s.Rejected,
-		Failed:    s.Failed,
-		InFlight:  s.InFlight,
+		SimTimeMs:       s.SimTimeMS,
+		Generated:       s.Generated,
+		Completed:       s.Completed,
+		Rejected:        s.Rejected,
+		Failed:          s.Failed,
+		InFlight:        s.InFlight,
+		WallElapsedMs:   s.WallElapsedMS,
+		EventsProcessed: s.EventsProcessed,
+		EventsPending:   s.EventsPending,
 		Components: make([]*v1.ComponentOccupancy, 0,
 			len(s.Components)),
 	}
