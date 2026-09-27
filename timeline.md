@@ -766,10 +766,127 @@ in-process HTTP server (generated client, real serialization/routing):
   cancellation): a run cannot be aborted mid-flight yet.
 - Capacity/cost require provider references on components; generic-only
   architectures get metrics + diagnosis but no estimates (by design).
-- The web console is a single page with inline tables — the canvas,
-  architecture editing, and comparison UI are still ahead.
 - CORS defaults to localhost:3000; production origins come from env.
 
 ### Next Step
 
-Step 6 — Architecture Comparison and Sharing
+Step 6 — The Architecture Editor ✅ (see below)
+
+---
+
+## Step 6 — The Architecture Editor (Canvas, Palette, Inspector)
+Status: COMPLETE
+
+### What Was Built
+
+The architecture view is now a working editor. The frontend owns ONE
+canonical editor state — `{architecture, workload, options, failures}` in a
+single reducer in `apps/web/app/page.tsx` — and every panel renders from it
+and edits through dispatched actions. No component keeps its own copy of
+the architecture; nothing simulated is computed in React.
+
+**Canvas** (`components/canvas.tsx`) — still dependency-free (no XYFlow;
+the project never had it), still deterministic layered layout, now with
+direct manipulation:
+
+| Interaction | How |
+|---|---|
+| Add node | drag a service row from the palette onto the canvas (HTML5 DnD, `loadline/service` payload); drop position becomes the node's persistent position |
+| Add client | "+ client" button in the palette (the simulator requires exactly one client) |
+| Select node / edge | click; edges get a wide invisible hit path and selection opens the link editor |
+| Move node | pointer drag with pointer capture; committed on release into editor state |
+| Connect | drag the square port on a node's right edge; rubber-band follows the cursor and snaps to the nearest node center; drop creates a `Link` (dupes and self-loops rejected in the reducer) |
+| Delete node | inspector delete button (client is protected), removes attached links + failures atomically |
+| Delete link | link editor's delete button (selection, not hover-click, so deletion is explicit) |
+| Zoom | wheel zoom around the cursor, ± buttons, clamped 0.3×–2.5× |
+| Pan | pointer drag on empty canvas |
+| Fit view | `fit` button (also in palette) scales/centers the graph |
+| Reset view | `reset` button clears all manual positions (re-layering deterministically) and refits |
+
+**Node design** — technical equipment, not SaaS cards: thin border, small
+typography, a two-letter role tag (CL/LB/AP/CA/QU/WK/DB/OS/NW), the
+provider/service line, a compact two-value metrics row (arrival RPS and
+utilization — backend results passed through verbatim, `—` before any run),
+a red left edge + corner dot when a failure injection targets the node, and
+a highlighted border when it is a connect-drop target.
+
+**Palette** (`components/palette.tsx`) — provider tabs (aws / cloudflare /
+gcp from the live catalog) filter the service list; service rows are
+draggable onto the canvas; the components section lists the current
+architecture with inline remove buttons (client protected).
+
+**Inspector** (`components/inspector.tsx`) — context-sensitive editing:
+
+- *Nothing selected* → architecture editor: name, local validation
+  warnings (missing/extra client, dangling links, failures targeting
+  missing components — the run button disables while issues exist),
+  workload fields (total users, DAU, req/user/day, peak multiplier,
+  reads-per-write, payload bytes), run options (seed, duration, retries,
+  backoff, timeout, per-component retry-on checkboxes), and the pending
+  failure list.
+- *Catalog service* → catalog model (capacity, scaling, pricing) + "add to
+  canvas".
+- *Component* → id rename (rewires links and failures atomically), generic
+  model fields exactly matching the backend `ComponentSpec` (concurrency,
+  queue limit, capacity RPS, service ms, hit ratio for caches, fan-out for
+  LB/network), or — when provider-backed — provider config overrides
+  (concurrency, queue limit, units, memory, storage, hit ratio; 0 = catalog
+  default, with the catalog values shown beside for reference) plus
+  detach-from-catalog. Below: the failure-injection form (type, start,
+  duration, type-specific params like added-ms / error-rate / packet-loss /
+  pass-through), measured results, capacity estimate, cost line items, and
+  clickable upstream/downstream link lists.
+- *Link* → condition editor (all / reads only / writes only) + delete.
+
+Numeric inputs keep local text state while typing (committing valid values,
+restoring canonical ones on blur) so intermediate states like "0." don't
+fight the user. The run button now runs exactly what the editor holds:
+architecture, workload, options, and any scheduled failures come from the
+same canonical state.
+
+### How to Run
+
+```bash
+terminal 1:
+cd apps/simulator && go run ./cmd/loadline-server -addr :8080
+
+terminal 2:
+cd apps/web && pnpm dev    # open http://localhost:3000
+
+cd apps/web && pnpm typecheck && pnpm build   # both clean
+```
+
+### Design Notes
+
+- State: one `useReducer` for the editor (architecture, workload, options,
+  failures, selection, canvas positions), a second for run lifecycle —
+  mirroring the backend split between inputs and outputs. Canvas positions
+  live in editor state (canonical, per component id) but are NOT serialized
+  into the Architecture protobuf; the wire schema stays clean.
+- The backend was untouched: no proto change, no Go change. Editing maps
+  1:1 onto fields the simulator already consumes; the "only expose fields
+  supported by the backend model" rule is enforced by construction (the
+  generic model editor renders `ComponentSpec` fields, the provider editor
+  renders `ProviderConfig` fields).
+- Determinism in the editor: same architecture + same positions always
+  draw identically; node drag is viewport-committed (no per-move dispatch
+  storm), connect targets snap deterministically (nearest center within
+  radius).
+- No simulation logic in React — the only numeric transforms in the UI are
+  display formatting (`format.ts`) and drag-coordinate math.
+
+### Current Limitations
+
+- No persistence yet: refreshing the page resets the editor (sharing /
+  compare flows come with Step 7).
+- Edges cannot be re-routed by dragging (delete + reconnect instead);
+  conditions are edited in the link inspector, not on-canvas.
+- Failure form starts/durations are per-injection constants; no visual
+  timeline of overlapping failures yet.
+- No undo/redo history; deletions are immediate.
+- Keyboard shortcuts (delete key, ctrl+drag duplicate) not wired yet.
+- Multi-select and box-select are out of scope for this step.
+
+### Next Step
+
+Step 7 — Architecture Comparison and Sharing

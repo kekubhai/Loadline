@@ -299,12 +299,27 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 1px;
-  padding: 0 10px;
+  gap: 2px;
+  padding: 4px 10px;
   background: var(--panel);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
-  cursor: pointer;
+  cursor: grab;
+}
+
+.canvas-node.dragging {
+  cursor: grabbing;
+  box-shadow: 0 1px 6px rgba(28, 26, 23, 0.18);
+  z-index: 3;
+}
+
+.canvas-node.connect-target {
+  border-color: var(--ink);
+  background: var(--panel-2);
+}
+
+.canvas-node.faulted {
+  border-left: 3px solid var(--bad);
 }
 
 .canvas-node:hover {
@@ -324,6 +339,102 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.canvas-node-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Two-letter role tag — a piece of equipment's stenciled marking. */
+.canvas-node-tag {
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 0 3px;
+  flex: none;
+}
+
+.canvas-node-metrics {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.canvas-node-metric {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.canvas-node-metric.hot {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+/* Connection port — a small square terminal on the right edge. */
+.canvas-node-port {
+  position: absolute;
+  right: -5px;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  margin-top: -4.5px;
+  padding: 0;
+  appearance: none;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 1px;
+  cursor: crosshair;
+}
+
+.canvas-node-port:hover {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+/* Failure indicator — small red dot, top-right corner. */
+.canvas-node-fault {
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--bad);
+}
+
+/* Wider invisible stroke over each edge for hover + click-to-delete. */
+.canvas-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 12;
+  cursor: pointer;
+  pointer-events: stroke;
+}
+
+.canvas-edge.hover {
+  stroke: var(--ink);
+  stroke-width: 1.6;
+}
+
+.canvas-edge-pending {
+  stroke: var(--ink-soft);
+  stroke-dasharray: 4 3;
+}
+
+/* Palette service drag over the canvas. */
+.canvas-viewport.canvas-drop {
+  outline: 1px dashed var(--ink-soft);
+  outline-offset: -4px;
+  cursor: copy;
 }
 
 .canvas-node-sub {
@@ -380,6 +491,163 @@
   border-radius: var(--radius);
   padding: 2px 7px;
   white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Palette — provider tabs + draggable services.                            */
+/* ------------------------------------------------------------------------ */
+
+.pal-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  padding: 6px 8px 2px;
+}
+
+.pal-tab {
+  appearance: none;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.pal-tab:hover {
+  color: var(--ink);
+  border-color: var(--accent-soft);
+}
+
+.pal-tab.active {
+  color: var(--paper);
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.pal-draggable {
+  cursor: grab;
+}
+
+.pal-draggable:active {
+  cursor: grabbing;
+}
+
+.pal-del {
+  appearance: none;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1;
+  color: var(--ink-faint);
+  background: none;
+  border: none;
+  padding: 0 4px;
+  cursor: pointer;
+  flex: none;
+}
+
+.pal-del:hover {
+  color: var(--bad);
+}
+
+.pal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 8px;
+}
+
+.pal-action {
+  font-size: 10px;
+  padding: 2px 8px;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Inspector — editor forms.                                                */
+/* ------------------------------------------------------------------------ */
+
+.ins-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+  min-width: 0;
+}
+
+.ins-row-label {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  white-space: nowrap;
+  display: block;
+  margin: 6px 0 2px;
+}
+
+.ins-row > .ins-row-label,
+.ins-row > span:first-child {
+  margin: 0;
+}
+
+.input-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.ins-failure {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--bad);
+  border-radius: 2px;
+  padding: 3px 6px;
+  margin: 4px 0;
+}
+
+.ins-failure-line {
+  font-size: 11px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.ins-failure-form {
+  border-top: 1px dashed var(--line);
+  margin-top: 8px;
+  padding-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ins-warn-list {
+  color: var(--warn);
+}
+
+.ins-link-row {
+  appearance: none;
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  padding: 2px 0;
+  cursor: pointer;
+}
+
+.ins-link-row:hover {
+  background: var(--panel-2);
 }
 
 /* ------------------------------------------------------------------------ */

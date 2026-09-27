@@ -56,3 +56,16 @@ const KIND_LABELS: Record<number, string> = {
 export function kindName(kind: number | undefined): string {
   return KIND_LABELS[kind ?? 0] ?? "component";
 }
+
+/**
+ * Parse a palette selection token. Returns the provider and service when
+ * the token points at a catalog entry ("catalog:aws:lambda"), otherwise
+ * null. Presentation-layer routing only — no data here.
+ */
+export function parseCatalogId(
+  selected: string | null,
+): { provider: string; service: string } | null {
+  if (!selected || !selected.startsWith("catalog:")) return null;
+  const [, provider, service] = selected.split(":");
+  return provider && service ? { provider, service } : null;
+}

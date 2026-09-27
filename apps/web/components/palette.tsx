@@ -1,13 +1,18 @@
 "use client";
 
 /**
- * Left palette — the provider catalog (fetched via ListCatalog) and the
- * current architecture's components. Selection only; no data derivation.
- * Selecting a catalog row reports "catalog:<provider>[:<service>]"; a
- * component row reports its architecture id.
+ * Left palette — provider tabs, the service catalog (fetched via
+ * ListCatalog), and the architecture's components. Catalog rows are
+ * draggable onto the canvas (HTML5 drag with the "loadline/service"
+ * payload type); the canvas converts drops into nodes. Selecting a row
+ * reports a "catalog:<provider>[:<service>]" token or a component id.
+ * No data derivation here.
  */
+import { useMemo, useState } from "react";
 import type { CatalogService, ComponentSpec } from "@loadline/api";
-import { kindName, normKind } from "./format";
+import { kindName } from "./format";
+
+export const SERVICE_MIME = "loadline/service";
 
 export function Palette({
   catalog,
@@ -15,19 +20,37 @@ export function Palette({
   components,
   selected,
   onSelect,
+  onDeleteComponent,
 }: {
   catalog: CatalogService[] | null;
   catalogError: string;
   components: ComponentSpec[];
   selected: string | null;
   onSelect: (id: string) => void;
+  onDeleteComponent: (id: string) => void;
 }) {
-  const byProvider = new Map<string, CatalogService[]>();
-  for (const s of catalog ?? []) {
-    if (!byProvider.has(s.provider)) byProvider.set(s.provider, []);
-    byProvider.get(s.provider)!.push(s);
-  }
-  const providers = [...byProvider.keys()].sort();
+  const byProvider = useMemo(() => {
+    const m = new Map<string, CatalogService[]>();
+    for (const s of catalog ?? []) {
+      if (!m.has(s.provider)) m.set(s.provider, []);
+      m.get(s.provider)!.push(s);
+    }
+    return m;
+  }, [catalog]);
+
+  const providers = useMemo(
+    () => [...byProvider.keys()].sort(),
+    [byProvider],
+  );
+
+  // Selected provider tab; falls back to the first provider once the
+  // catalog arrives. Selecting a provider tab shows its services only —
+  // the user asked for provider-then-service navigation.
+  const [activeProvider, setActiveProvider] = useState<string | null>(null);
+  const shown =
+    activeProvider && byProvider.has(activeProvider)
+      ? activeProvider
+      : (providers[0] ?? null);
 
   return (
     <nav className="palette">
@@ -37,39 +60,57 @@ export function Palette({
       ) : !catalog ? (
         <div className="pal-note">loading catalog…</div>
       ) : (
-        providers.map((p) => (
-          <div
-            key={p}
-            className={`pal-row${selected === `catalog:${p}` ? " selected" : ""}`}
-            onClick={() => onSelect(`catalog:${p}`)}
-          >
-            <span className="pal-name">{p}</span>
-            <span className="pal-right">{byProvider.get(p)!.length}</span>
-          </div>
-        ))
+        <div className="pal-tabs">
+          {providers.map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={`pal-tab${shown === p ? " active" : ""}`}
+              onClick={() => setActiveProvider(p)}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
       )}
 
       <div className="pal-head">Services</div>
-      {providers.map((p) => (
-        <div key={p}>
-          <div className="pal-sub">{p}</div>
-          {byProvider.get(p)!.map((s) => {
+      {catalog && shown && (
+        <div className="pal-services">
+          {(byProvider.get(shown) ?? []).map((s) => {
             const id = `catalog:${s.provider}:${s.service}`;
             return (
               <div
                 key={id}
-                className={`pal-row${selected === id ? " selected" : ""}`}
+                className={`pal-row pal-draggable${
+                  selected === id ? " selected" : ""
+                }`}
+                title={`${s.provider}/${s.service} — drag onto the canvas`}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData(
+                    SERVICE_MIME,
+                    `${s.provider}:${s.service}`,
+                  );
+                  e.dataTransfer.effectAllowed = "copy";
+                }}
                 onClick={() => onSelect(id)}
               >
                 <span className="pal-name">{s.service}</span>
-                <span className="pal-right">{normKind(s.componentKind)}</span>
+                <span className="pal-right">{kindLabel(s.componentKind)}</span>
               </div>
             );
           })}
+          {providers.length > 1 && (
+            <div className="pal-note">drag a service onto the canvas to add it</div>
+          )}
         </div>
-      ))}
+      )}
 
       <div className="pal-head">Components</div>
+      {components.length === 0 && (
+        <div className="pal-note">empty architecture — drop a service</div>
+      )}
       {components.map((c) => (
         <div
           key={c.id}
@@ -78,10 +119,34 @@ export function Palette({
         >
           <span className="pal-name">{c.id}</span>
           <span className="pal-right">
-            {c.provider ? `${c.provider}/${c.service}` : kindName(c.kind)}
+            {c.provider
+              ? `${c.provider}/${c.service}`
+              : kindName(c.kind)}
           </span>
+          {c.kind !== 1 && ( // 1 = COMPONENT_KIND_CLIENT: the simulator requires exactly one client.
+            <button
+              type="button"
+              className="pal-del"
+              title={`remove ${c.id}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteComponent(c.id);
+              }}
+            >
+              ×
+            </button>
+          )}
         </div>
       ))}
     </nav>
   );
+}
+
+/** proto enum name "COMPONENT_KIND_X" → short display label. */
+function kindLabel(k?: string | null): string {
+  return (k ?? "")
+    .replace(/^COMPONENT_KIND_/, "")
+    .replace(/_/g, " ")
+    .trim()
+    .toLowerCase();
 }
