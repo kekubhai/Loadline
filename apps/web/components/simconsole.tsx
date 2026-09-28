@@ -49,7 +49,7 @@ const SPEEDS = [1, 5, 10, 50];
 
 /** What the owning page learns when a run reaches a terminal state. */
 export interface SimOutcome {
-  status: "completed" | "stopped";
+  status: "completed" | "stopped" | "failed";
   simId: string;
 }
 
@@ -82,6 +82,19 @@ function statusTone(s: RunStatus): "ok" | "warn" | "bad" | "idle" {
     default:
       return "idle";
   }
+}
+
+/**
+ * Generic-kind label for one component of the current architecture.
+ * The live occupancy frames carry component IDs only, so the kind is
+ * looked up in the architecture the run was started from.
+ */
+function kindByComponent(
+  architecture: Architecture,
+  componentId: string,
+): string {
+  const c = architecture.components.find((x) => x.id === componentId);
+  return c ? kindName(c.kind) : "component";
 }
 
 /* ------------------------------------------------------------ plots ------ */
@@ -158,6 +171,7 @@ export function SimConsole({
   running,
   onRunningChange,
   onOutcome,
+  onSimId,
 }: {
   /** Current editor architecture (canonical state lives in the page). */
   architecture: Architecture;
@@ -168,6 +182,8 @@ export function SimConsole({
   running: boolean;
   onRunningChange: (v: boolean) => void;
   onOutcome: (outcome: SimOutcome) => void;
+  /** Reports the backend-assigned simulation id once creation succeeds. */
+  onSimId?: (id: string | null) => void;
 }) {
   // Display status starts as a mirror of `running`; it is then driven by
   // real control/status frames from the stream.
@@ -249,6 +265,7 @@ export function SimConsole({
       const id = created.simulation?.id ?? "";
       if (!id) throw new Error("backend returned no simulation id");
       simIdRef.current = id;
+      onSimId?.(id);
       if (!isCurrent()) return;
 
       const streamPromise = (async () => {
@@ -316,9 +333,13 @@ export function SimConsole({
       if (!isCurrent()) return;
       onRunningChange(false);
       applyStatus(RunStatus.FAILED);
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(message);
+      // The page must learn the run failed too: without this the nav
+      // banner kept saying "idle" after a failed run.
+      onOutcome({ status: "failed", simId: simIdRef.current ?? "" });
     }
-  }, [architecture, workload, options, serverUrl, applyStatus, onRunningChange, onOutcome]);
+  }, [architecture, workload, options, serverUrl, applyStatus, onRunningChange, onOutcome, onSimId]);
 
   const pause = useCallback(async () => {
     const id = simIdRef.current;
@@ -379,6 +400,7 @@ export function SimConsole({
   const reset = useCallback(() => {
     runIdRef.current++; // invalidates in-flight stream callbacks
     simIdRef.current = null;
+    onSimId?.(null);
     applyStatus(RunStatus.UNSPECIFIED);
     setLive(null);
     setResults(null);
@@ -389,7 +411,7 @@ export function SimConsole({
     speedRef.current = 1;
     setPaced(false);
     onRunningChange(false);
-  }, [applyStatus, onRunningChange]);
+  }, [applyStatus, onRunningChange, onSimId]);
 
   /* ----------------------------------------------------- derived views -- */
 
@@ -526,7 +548,7 @@ export function SimConsole({
                   {live.components.map((c) => (
                     <tr key={c.componentId}>
                       <td>{c.componentId}</td>
-                      <td>{kindName(undefined)}</td>
+                      <td>{kindByComponent(architecture, c.componentId)}</td>
                       <td>{f0(c.arrived)}</td>
                       <td>{f0(c.completed)}</td>
                       <td>{f0(c.queueDepth)}</td>

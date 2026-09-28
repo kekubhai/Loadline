@@ -7,11 +7,14 @@
  * (provider catalog + architecture components), center canvas, right
  * inspector, bottom operations strip (live progress + system metrics).
  *
- * This file owns the CANONICAL editor state — one copy of
- * {architecture, workload, options} that every panel renders from and
- * edits through dispatches — plus backend I/O. Panels never keep their
- * own copy of the architecture. Every displayed number comes from the
- * simulation service; nothing is computed or faked here.
+ * The CANONICAL editor state — one copy of
+ * {architecture, workload, options} — lives in ./editor (reducer +
+ * initial demo architecture + local validation); the run-outcome state
+ * lives in ./runstate. This file owns backend I/O and layout only:
+ * every panel renders from that state and edits it through dispatched
+ * actions. Panels never keep their own copy of the architecture. Every
+ * displayed number comes from the simulation service; nothing is
+ * computed or faked here.
  */
 import {
   useCallback,
@@ -23,36 +26,18 @@ import {
 } from "react";
 import {
   ComponentKind,
-  create,
   createLoadlineClient,
 } from "@loadline/api";
-import {
-  ArchitectureSchema,
-  ComponentSpecSchema,
-  FinalResultsSchema,
-  LinkSchema,
-  ProviderConfigSchema,
-  SimulationOptionsSchema,
-  WorkloadSpecSchema,
-} from "@loadline/api";
 import type {
-  Architecture,
   CatalogService,
-  ComponentSpec,
-  Diagnosis,
   Failure,
-  FinalResults,
-  GetCapacityResponse,
-  GetCostEstimateResponse,
-  Link,
-  ProviderConfig,
   SimulationOptions,
   WorkloadSpec,
 } from "@loadline/api";
+import type { ComponentPatch } from "../components/inspector";
 import { ArchitectureCanvas } from "../components/canvas";
 import type { CanvasHandles } from "../components/canvas";
 import { Inspector } from "../components/inspector";
-import type { ComponentPatch } from "../components/inspector";
 import { Palette } from "../components/palette";
 import { SimConsole } from "../components/simconsole";
 import type { SimOutcome } from "../components/simconsole";
@@ -78,432 +63,26 @@ import {
   StatusIndicator,
   toneForWord,
 } from "../components/ui";
+import {
+  editorReducer,
+  initialEditorState,
+  validateArchitecture,
+  kindRole,
+  kindFromProtoName,
+} from "./editor";
+import {
+  runReducer,
+  initialRun,
+  pageStatus,
+  fetchOutcomeArtifacts,
+} from "./runstate";
+import type { PageRunState } from "./runstate";
 
-/* ------------------------------------------------------- editor reducer -- */
-
-interface EditorState {
-  architecture: Architecture;
-  workload: WorkloadSpec;
-  options: SimulationOptions;
-  failures: Failure[];
-  /** Editor selection: component id, "link:<index>", or catalog token. */
-  selected: string | null;
-  /** Canvas positions per component id (editor presentation state). */
-  positions: Record<string, { x: number; y: number }>;
-}
-
-const SCHEMA_VERSION = "1";
-
-function freshId(components: ComponentSpec[], base: string): string {
-  if (!components.some((c) => c.id === base)) return base;
-  for (let i = 2; ; i++) {
-    const id = `${base}-${i}`;
-    if (!components.some((c) => c.id === id)) return id;
-  }
-}
-
-type EditAction =
-  | { type: "select"; id: string | null }
-  | { type: "renameArch"; name: string }
-  | {
-      type: "addComponent";
-      provider: string;
-      service: string;
-      kind: number;
-      pos?: { x: number; y: number };
-    }
-  | { type: "addClient" }
-  | { type: "patchComponent"; id: string; patch: ComponentPatch }
-  | { type: "renameComponent"; from: string; to: string }
-  | { type: "deleteComponent"; id: string }
-  | { type: "moveNode"; id: string; x: number; y: number }
-  | { type: "resetLayout" }
-  | { type: "connect"; from: string; to: string }
-  | { type: "patchLink"; index: number; condition: string }
-  | { type: "deleteLink"; index: number }
-  | { type: "addFailure"; failure: Failure }
-  | { type: "removeFailure"; index: number }
-  | { type: "patchWorkload"; patch: Partial<WorkloadSpec> }
-  | { type: "patchOptions"; patch: Partial<SimulationOptions> };
-
-function editorReducer(s: EditorState, a: EditAction): EditorState {
-  switch (a.type) {
-    case "select":
-      return { ...s, selected: a.id };
-
-    case "renameArch":
-      return {
-        ...s,
-        architecture: { ...s.architecture, name: a.name },
-      };
-
-    case "addComponent": {
-      const id = freshId(s.architecture.components, a.service.toLowerCase());
-      const comp = create(ComponentSpecSchema, {
-        id,
-        kind: a.kind,
-        provider: a.provider,
-        service: a.service,
-      });
-      return {
-        ...s,
-        architecture: {
-          ...s.architecture,
-          components: [...s.architecture.components, comp],
-        },
-        positions: a.pos ? { ...s.positions, [id]: a.pos } : s.positions,
-        selected: id,
-      };
-    }
-
-    case "addClient": {
-      const id = freshId(s.architecture.components, "client");
-      const comp = create(ComponentSpecSchema, { id, kind: ComponentKind.CLIENT });
-      return {
-        ...s,
-        architecture: {
-          ...s.architecture,
-          components: [comp, ...s.architecture.components],
-        },
-        selected: id,
-      };
-    }
-
-    case "patchComponent": {
-      const components = s.architecture.components.map((c) => {
-        if (c.id !== a.id) return c;
-        const next = create(ComponentSpecSchema, c);
-        const p = a.patch;
-        if (p.provider !== undefined) next.provider = p.provider;
-        if (p.service !== undefined) next.service = p.service;
-        if (p.concurrency !== undefined) next.concurrency = p.concurrency;
-        if (p.queueLimit !== undefined) next.queueLimit = p.queueLimit;
-        if (p.capacityRps !== undefined) next.capacityRps = p.capacityRps;
-        if (p.defaultServiceTimeMillis !== undefined)
-          next.defaultServiceTimeMillis = p.defaultServiceTimeMillis;
-        if (p.hitRatio !== undefined) next.hitRatio = p.hitRatio;
-        if (p.fanOut !== undefined) next.fanOut = p.fanOut;
-        if (p.config !== undefined) {
-          if (p.config === null) {
-            next.config = undefined;
-          } else {
-            const merged = create(ProviderConfigSchema, c.config);
-            const partial = p.config;
-            if (partial.concurrency !== undefined)
-              merged.concurrency = partial.concurrency;
-            if (partial.queueLimit !== undefined)
-              merged.queueLimit = partial.queueLimit;
-            if (partial.units !== undefined) merged.units = partial.units;
-            if (partial.memoryMb !== undefined)
-              merged.memoryMb = partial.memoryMb;
-            if (partial.storageGb !== undefined)
-              merged.storageGb = partial.storageGb;
-            if (partial.hitRatio !== undefined)
-              merged.hitRatio = partial.hitRatio;
-            next.config = merged;
-          }
-        }
-        return next;
-      });
-      return { ...s, architecture: { ...s.architecture, components } };
-    }
-
-    case "renameComponent": {
-      const to = a.to.trim();
-      if (
-        !to ||
-        to === a.from ||
-        s.architecture.components.some((c) => c.id === to)
-      ) {
-        return s;
-      }
-      const components = s.architecture.components.map((c) =>
-        c.id === a.from ? { ...c, id: to } : c,
-      );
-      const links = s.architecture.links.map((l) =>
-        create(LinkSchema, {
-          from: l.from === a.from ? to : l.from,
-          to: l.to === a.from ? to : l.to,
-        }),
-      );
-      const failures = s.failures.map((f) =>
-        f.target === a.from ? { ...f, target: to } : f,
-      );
-      return {
-        ...s,
-        architecture: { ...s.architecture, components, links },
-        failures,
-        selected: s.selected === a.from ? to : s.selected,
-      };
-    }
-
-    case "deleteComponent": {
-      const components = s.architecture.components.filter((c) => c.id !== a.id);
-      const links = s.architecture.links.filter(
-        (l) => l.from !== a.id && l.to !== a.id,
-      );
-      const failures = s.failures.filter((f) => f.target !== a.id);
-      return {
-        ...s,
-        architecture: { ...s.architecture, components, links },
-        failures,
-        selected: s.selected === a.id ? null : s.selected,
-      };
-    }
-
-    case "moveNode":
-      return {
-        ...s,
-        positions: { ...s.positions, [a.id]: { x: a.x, y: a.y } },
-      };
-
-    case "resetLayout":
-      return { ...s, positions: {} };
-
-    case "connect": {
-      if (a.from === a.to) return s;
-      if (
-        s.architecture.links.some(
-          (l) => l.from === a.from && l.to === a.to,
-        )
-      ) {
-        return s;
-      }
-      return {
-        ...s,
-        architecture: {
-          ...s.architecture,
-          links: [
-            ...s.architecture.links,
-            create(LinkSchema, { from: a.from, to: a.to }),
-          ],
-        },
-        selected: `link:${s.architecture.links.length}`,
-      };
-    }
-
-    case "patchLink": {
-      const links = s.architecture.links.map((l, i) =>
-        i === a.index ? { ...l, condition: a.condition } : l,
-      );
-      return { ...s, architecture: { ...s.architecture, links } };
-    }
-
-    case "deleteLink": {
-      const links = s.architecture.links.filter((_, i) => i !== a.index);
-      return {
-        ...s,
-        architecture: { ...s.architecture, links },
-        selected: s.selected === `link:${a.index}` ? null : s.selected,
-      };
-    }
-
-    case "addFailure":
-      return { ...s, failures: [...s.failures, a.failure] };
-
-    case "removeFailure":
-      return { ...s, failures: s.failures.filter((_, i) => i !== a.index) };
-
-    case "patchWorkload":
-      return { ...s, workload: { ...s.workload, ...a.patch } };
-
-    case "patchOptions":
-      return { ...s, options: { ...s.options, ...a.patch } };
-  }
-}
-
-/* ---------------------------------------------------- demo architecture -- */
-
-// The demonstration architecture, built on the AWS catalog: Client → Lambda
-// → ElastiCache → RDS. The crash toggle reuses the same seed for a
-// controlled baseline-vs-cascade comparison.
-const INITIAL_ARCHITECTURE: Architecture = create(ArchitectureSchema, {
-  schemaVersion: SCHEMA_VERSION,
-  name: "aws-web",
-  components: [
-    { id: "client", kind: ComponentKind.CLIENT },
-    {
-      id: "api",
-      kind: ComponentKind.API_SERVER,
-      provider: "aws",
-      service: "lambda",
-      config: { memoryMb: 512 },
-    },
-    {
-      id: "cache",
-      kind: ComponentKind.CACHE,
-      provider: "aws",
-      service: "elasticache",
-      hitRatio: 0.8,
-    },
-    {
-      id: "db",
-      kind: ComponentKind.DATABASE,
-      provider: "aws",
-      service: "rds",
-      config: { storageGb: 100 },
-    },
-  ],
-  links: [
-    create(LinkSchema, { from: "client", to: "api" }),
-    create(LinkSchema, { from: "api", to: "cache" }),
-    create(LinkSchema, { from: "cache", to: "db" }),
-  ],
-});
-
-const INITIAL_WORKLOAD: WorkloadSpec = create(WorkloadSpecSchema, {
-  totalUsers: 10_000_000n,
-  dau: 1_000_000n,
-  requestsPerUserPerDay: 40,
-  peakMultiplier: 5,
-  readWriteRatio: 4,
-  payloadBytes: 4096n,
-});
-
-const INITIAL_OPTIONS: SimulationOptions = create(SimulationOptionsSchema, {
-  seed: 7n,
-  durationMs: 10_000,
-  maxRetries: 2,
-  backoffBaseMs: 5,
-  timeoutMs: 50,
-  retryOn: ["api", "cache"],
-});
-
-/* --------------------------------------------------------- run reducer -- */
-
-type Phase = "idle" | "running" | "done" | "error";
-
-interface RunState {
-  phase: Phase;
-  simId: string | null;
-  results: FinalResults | null;
-  diagnosis: Diagnosis | null;
-  capacity: GetCapacityResponse | null;
-  cost: GetCostEstimateResponse | null;
-  error: string;
-}
-
-const initialRun: RunState = {
-  phase: "idle",
-  simId: null,
-  results: null,
-  diagnosis: null,
-  capacity: null,
-  cost: null,
-  error: "",
-};
-
-type RunAction =
-  | { type: "reset" }
-  | { type: "created"; id: string }
-  | { type: "results"; results: FinalResults }
-  | { type: "diagnosis"; diagnosis: Diagnosis }
-  | { type: "capacity"; capacity: GetCapacityResponse }
-  | { type: "cost"; cost: GetCostEstimateResponse }
-  | { type: "error"; message: string };
-
-function runReducer(s: RunState, a: RunAction): RunState {
-  switch (a.type) {
-    case "reset":
-      return initialRun;
-    case "created":
-      return { ...s, simId: a.id };
-    case "results":
-      return { ...s, phase: "done", results: a.results };
-    case "diagnosis":
-      return { ...s, diagnosis: a.diagnosis };
-    case "capacity":
-      return { ...s, capacity: a.capacity };
-    case "cost":
-      return { ...s, cost: a.cost };
-    case "error":
-      return { ...s, phase: "error", error: a.message };
-  }
-}
-
-/**
- * Run-state derivation for the ops strip. The console owns the live
- * RunStatus while a run executes (it sees the control frames); the page
- * tracks the terminal outcome for the comparison-ready banner.
- */
-interface PageRunState {
-  /** Live console status while a run is active. */
-  active: boolean;
-  /** Last terminal outcome of a console run. */
-  outcome: SimOutcome | null;
-}
-
-function pageStatus(s: PageRunState): { state: "ok" | "warn" | "bad" | "idle"; label: string } {
-  if (s.active) return { state: "warn", label: "running" };
-  switch (s.outcome?.status) {
-    case "completed":
-      return { state: "ok", label: `complete · ${s.outcome.simId}` };
-    case "stopped":
-      return { state: "bad", label: `stopped · ${s.outcome.simId}` };
-    default:
-      return { state: "idle", label: "idle" };
-  }
-}
-
-/* --------------------------------------------------------------- helpers -- */
-
-/** All architecture validations the page can do locally (cheap, advisory). */
-function validateArchitecture(arch: Architecture, failures: Failure[]): string[] {
-  const issues: string[] = [];
-  const ids = new Set(arch.components.map((c) => c.id));
-  const clients = arch.components.filter((c) => c.kind === ComponentKind.CLIENT);
-  if (clients.length === 0) issues.push("no client — the simulator needs exactly one");
-  if (clients.length > 1) issues.push("multiple clients — the simulator needs exactly one");
-  for (const l of arch.links) {
-    if (!ids.has(l.from) || !ids.has(l.to)) {
-      issues.push(`link ${l.from} → ${l.to} references a missing component`);
-    }
-  }
-  for (const f of failures) {
-    if (!ids.has(f.target)) {
-      issues.push(`failure targets missing component "${f.target}"`);
-    }
-  }
-  return issues;
-}
-
-/** kind → generic role label for canvas nodes. */
-function kindRole(kind: number): string {
-  switch (kind) {
-    case ComponentKind.CLIENT:
-      return "client";
-    case ComponentKind.LOAD_BALANCER:
-      return "load balancer";
-    case ComponentKind.API_SERVER:
-      return "api server";
-    case ComponentKind.CACHE:
-      return "cache";
-    case ComponentKind.QUEUE:
-      return "queue";
-    case ComponentKind.WORKER:
-      return "worker";
-    case ComponentKind.DATABASE:
-      return "database";
-    case ComponentKind.OBJECT_STORAGE:
-      return "object storage";
-    case ComponentKind.NETWORK:
-      return "network";
-    default:
-      return "component";
-  }
-}
-
-/* --------------------------------------------------------------- shell -- */
+/* --------------------------------------------------------- editor intents -- */
 
 export default function Home() {
   const [serverUrl, setServerUrl] = useState("http://localhost:8080");
-  const [editor, dispatch] = useReducer(editorReducer, {
-    architecture: INITIAL_ARCHITECTURE,
-    workload: INITIAL_WORKLOAD,
-    options: INITIAL_OPTIONS,      failures: [],
-      positions: {},
-      selected: null as string | null,
-    });
+  const [editor, dispatch] = useReducer(editorReducer, initialEditorState);
   const [state, runDispatch] = useReducer(runReducer, initialRun);
   const [view, setView] = useState("architecture");
   const [catalog, setCatalog] = useState<CatalogService[] | null>(null);
@@ -512,7 +91,6 @@ export default function Home() {
   const [pageRun, setPageRun] = useState<PageRunState>({ active: false, outcome: null });
 
   const canvasHandles = useRef<CanvasHandles | null>(null);
-
 
   const client = useMemo(
     () => createLoadlineClient({ baseUrl: serverUrl }),
@@ -658,44 +236,26 @@ export default function Home() {
    */
   const onConsoleOutcome = useCallback(
     (outcome: SimOutcome) => {
+      // Drop ALL of the previous run's analysis before fetching the new
+      // run's artifacts: results otherwise lingered under a new sim id
+      // during the (async) fetch window and after artifact failures.
       runDispatch({ type: "reset" });
+      if (outcome.status === "failed") {
+        // A failed run has no results and must not serve as anyone's
+        // diagnosis baseline.
+        baselineIdRef.current = null;
+        return;
+      }
       const id = outcome.simId;
       const healthy = editor.failures.length === 0;
       if (healthy) baselineIdRef.current = id;
 
-      (async () => {
-        try {
-          const res = await client.getResults({ simulationId: id });
-          runDispatch({
-            type: "results",
-            results: create(FinalResultsSchema, {
-              plan: res.plan,
-              metrics: res.metrics,
-              failures: res.failures,
-              summary: res.summary,
-            }),
-          });
-          const diag = await client.getDiagnosis({
-            simulationId: id,
-            baselineSimulationId: healthy ? "" : (baselineIdRef.current ?? ""),
-          });
-          if (diag.diagnosis) {
-            runDispatch({ type: "diagnosis", diagnosis: diag.diagnosis });
-          }
-          const cap = await client.getCapacity({ simulationId: id });
-          runDispatch({ type: "capacity", capacity: cap });
-          const cost = await client.getCostEstimate({ simulationId: id });
-          runDispatch({ type: "cost", cost });
-        } catch (e) {
-          // Analysis artifacts are best-effort: a stopped run or a
-          // generic (provider-less) architecture legitimately has no
-          // capacity/cost report. Surface the message, keep the results.
-          runDispatch({
-            type: "error",
-            message: e instanceof Error ? e.message : String(e),
-          });
-        }
-      })();
+      void fetchOutcomeArtifacts(outcome, {
+        client,
+        healthy,
+        baselineId: baselineIdRef.current,
+        dispatch: runDispatch,
+      });
     },
     [client, editor.failures.length],
   );
@@ -922,6 +482,7 @@ export default function Home() {
             serverUrl={serverUrl}
             running={pageRun.active}
             onRunningChange={(v) => setPageRun((p) => ({ ...p, active: v }))}
+            onSimId={(id) => runDispatch({ type: "created", id: id ?? "" })}
             onOutcome={(o) => {
               setPageRun((p) => ({ ...p, outcome: o }));
               onConsoleOutcome(o);
@@ -1097,20 +658,4 @@ export default function Home() {
       </footer>
     </div>
   );
-}
-
-/** proto enum name → numeric ComponentKind for drop → node creation. */
-function kindFromProtoName(name: string): number {
-  const table: Record<string, number> = {
-    COMPONENT_KIND_CLIENT: ComponentKind.CLIENT,
-    COMPONENT_KIND_LOAD_BALANCER: ComponentKind.LOAD_BALANCER,
-    COMPONENT_KIND_API_SERVER: ComponentKind.API_SERVER,
-    COMPONENT_KIND_CACHE: ComponentKind.CACHE,
-    COMPONENT_KIND_QUEUE: ComponentKind.QUEUE,
-    COMPONENT_KIND_WORKER: ComponentKind.WORKER,
-    COMPONENT_KIND_DATABASE: ComponentKind.DATABASE,
-    COMPONENT_KIND_OBJECT_STORAGE: ComponentKind.OBJECT_STORAGE,
-    COMPONENT_KIND_NETWORK: ComponentKind.NETWORK,
-  };
-  return table[name] ?? 0;
 }
