@@ -1033,3 +1033,175 @@ cd apps/web && pnpm typecheck && pnpm build     # both clean
 ### Next Step
 
 Step 8 — Architecture Comparison and Sharing
+
+---
+
+## Step 6 — End-to-End MVP Validation
+Status: COMPLETE
+
+### What Was Validated
+
+The complete LOADLINE workflow was verified from the browser stack to the
+Go simulation engine and back, at three independent layers:
+
+1. **Wire-level E2E (real server binary, real TCP)** — the full workflow
+   against `go run ./cmd/loadline-server` over HTTP with curl/node:
+   ListCatalog (18 services) → CreateSimulation (id assigned) → run
+   polling to COMPLETED → GetResults (conservation, percentile ordering,
+   4 component reports, derived plan, engine summary) → GetDiagnosis →
+   GetCapacity (3 reports, utilization+headroom=1, assumption trails) →
+   GetCostEstimate (positive total, "not live billing" marker). Invalid
+   workloads and architectures are rejected cleanly (HTTP 400 with
+   explanatory messages), results-before-run and double-run are rejected,
+   run IDs are handled (404 on unknown, FailedPrecondition on terminal).
+
+2. **Cross-stack E2E (tests/e2e)** — the REAL TypeScript Connect client
+   from packages/api (binary proto over fetch, the exact code the browser
+   bundles) against the real Go server: 5 tests covering the healthy
+   workflow, the cache-crash cascade with baseline comparison, clean
+   rejection of invalid workload/architecture, and not-found handling.
+
+3. **Backend API test suite (in-process)** — 99 Go tests total. New this
+   step: API-level failure-matrix tests proving all four V1 failure types
+   produce their distinct measured signatures through the wire
+   (see below).
+
+### Failure Validation (REAL cascades, engine-emergent)
+
+All four injection types verified through the API under heavy load
+(10M users / 1M DAU / 40 req/user/day / 5× peak ≈ 2315 RPS against
+Client → Lambda → ElastiCache(80% hit) → RDS, seed 7):
+
+| Failure | Measured result (same-seed baseline vs failed run) |
+|---|---|
+| crash (pass-through) | db arrivals 8,200 → 25,518 (+211%); p99 36.1 → 207.2ms; diagnosis: db critical, "rejected … admission capacity exhausted" |
+| crash (hard) | cache records failures, completions drop, traffic completes after recovery |
+| increased_latency (+60ms on db) | db capacity collapses 5ms→65ms → 16,539/46,303 requests load-shed (queue limit), 32 timeouts after retries exhaust; diagnosis: db critical with 87.1% rejection reason. Cache-hit path latency is unaffected (hits never touch the db) — the signature is shedding, not a percentile shift, and the engine models exactly that |
+| increased_error_rate (30% at db) | db-attributed failures appear, retry attempts visible in failure records |
+| network_failure (25% loss at api) | dedicated `dropped` counter (distinct from errors), error rate ≈ 25% |
+
+The cascade emerges from component interactions only: cache failover →
+db traffic surge → db queue overflow → load shedding → retry
+amplification → timeout attribution to the true caller chain. No cascade
+logic is scripted anywhere; the diagnosis strings are machine-computed
+from the metrics.
+
+### Integration Issues Discovered and Fixed
+
+1. **Stale results leaked across runs (frontend)** — after a new run
+   finished, the previous run's analysis tables stayed visible during the
+   artifact-fetch window and after artifact failures. Fixed: the page now
+   drops ALL of the previous run's artifacts the moment a terminal
+   outcome arrives (`runstate.ts` reset before fetching).
+2. **Failed runs were invisible to the page (frontend)** — a failed run
+   left the nav banner saying "idle" and kept the dead run as a diagnosis
+   baseline. Fixed: `SimOutcome` gained a `"failed"` status, the console
+   reports it from its catch path, and the page clears the baseline
+   (a failed run must never be a baseline).
+3. **Dead simulation-id state (frontend)** — `state.simId` was never
+   populated (the `created` reducer action was unreachable), so the
+   canvas header and ops strip never showed which run the numbers
+   belonged to. Fixed: the console reports the backend-assigned id via a
+   new `onSimId` callback; reset clears it.
+4. **Constant kind column in the live occupancy table (frontend)** — the
+   live view rendered `kindName(undefined)` (always "component") because
+   progress frames carry ids only. Fixed: kinds are looked up from the
+   architecture the run started from.
+
+### Tests Added
+
+Backend (`apps/simulator/loadlinev1/failure_matrix_test.go`, 5 tests —
+all through the real Connect service over in-process HTTP):
+
+- `TestLatencyFailureViaAPI` — capacity collapse → load shedding →
+  timeout attribution → db flagged critical (vs baseline) → capacity
+  flags db as bottleneck → cost stays consistent on the degraded run
+- `TestErrorRateFailureViaAPI` — db-attributed terminal failures
+- `TestNetworkFailureViaAPI` — drops counter + ~25% error rate
+- `TestCrashWithoutPassThroughViaAPI` — hard crash fails at the target
+- `TestGetResultsFailureRecords` — failure records survive the wire
+  (kind, component/caller attribution, attempts, paths, timings) and
+  conservation holds
+
+Frontend (`apps/web`, 48 tests — vitest + @testing-library/react):
+
+- `app/editor.test.ts` (17) — the canonical editor reducer: build
+  (add/connect/rename/delete with atomic link+failure rewiring, id
+  dedup, self-loop and duplicate rejection), configure (generic spec
+  fields, provider-config merge and detach), workload/options patches,
+  failure scheduling, canvas presentation state, validation helpers
+- `app/runstate.test.ts` (8) — run-outcome reducer transitions, stale-
+  data isolation on reset, page-status derivation (incl. failed), and
+  the artifact fetch sequence (order, baseline semantics, error
+  surfacing)
+- `components/simconsole.test.tsx` (8) — the run console against a
+  mocked Connect client (frames are real protobuf messages): end-to-end
+  run → outcome, live progress + control-frame-driven status, failure
+  paths (create rejection, FAILED status frame), stop → STOPPED partial
+  results, reset, and stale-run isolation
+- `components/analysis.test.tsx` (8) — bottleneck/capacity/cost panels
+  render backend values verbatim (severity, machine-computed reasons,
+  baseline deltas, headroom, assumption trails, ESTIMATE marker) and
+  honest empty states
+- `components/workloadpanel.test.tsx` (4) — derivation chain refuses to
+  guess before a run ("—" placeholders), renders backend plan values
+  after
+- `components/format.test.ts` (3) — display formatters
+
+Integration (`tests/e2e/roundtrip.test.mts`, 5 tests): the complete
+Architecture → Workload → Run → Backend → Simulation → Results loop with
+the real TS client; new `@loadline/e2e` workspace package; `pnpm test`
+wired through turbo.
+
+### Commands Used
+
+```bash
+# backend
+cd apps/simulator && go test ./... -count=1        # 99 tests
+cd apps/simulator && go vet ./... && gofmt -l .    # clean
+cd apps/simulator && go build ./...                # clean
+
+# frontend
+cd apps/web && npx vitest run                      # 48 tests
+cd apps/web && npx tsc --noEmit                    # clean
+cd apps/web && npx next build                      # clean
+cd packages/api && npx tsc --noEmit                # clean
+
+# cross-stack e2e (server must be running)
+cd apps/simulator && go run ./cmd/loadline-server -addr :8080
+cd tests/e2e && E2E_BASE_URL=http://127.0.0.1:8080 npx vitest run   # 5 tests
+```
+
+### Current Capabilities
+
+A user can open LOADLINE, pick services from the live provider catalog,
+build and connect an architecture on the canvas, configure components,
+workload, and run options, schedule any of the four failure injections,
+run the simulation (watch it live via streamed progress frames, pause/
+resume/stop, change speed), receive REAL results from the Go engine
+(requests, completed, rejected, throughput, avg/p50/p95/p99 latency,
+error rate, queue depth, per-component utilization), see the machine-
+computed bottleneck diagnosis with baseline deltas, capacity ceilings
+with headroom, and the monthly cost estimate — then re-run with a
+failure and watch the degradation emerge from the same deterministic
+engine. Every number displayed is simulation output; nothing is faked.
+
+### Known Limitations
+
+- The run store is in-memory and single-process; run ids die with the
+  server. No persistence/sharing yet (next step).
+- Latency percentiles exclude admission rejections (by documented design:
+  they never entered service), so pure load-shedding scenarios show flat
+  percentiles while rejections/timeouts carry the degradation signal.
+- Progress snapshots arrive at the 1s-sim sampling cadence; no
+  continuous event firehose or per-hop latency attribution yet.
+- RESET abandons the run client-side; an in-flight stream is not
+  cancelled server-side (frames are ignored by run id).
+- Diagnosis baseline selection is implicit (last healthy run).
+- Capacity/cost require provider-backed components (generic-only
+  architectures get metrics + diagnosis by design).
+
+### Next Step
+
+Step 7 — Architecture Comparison and Sharing
+

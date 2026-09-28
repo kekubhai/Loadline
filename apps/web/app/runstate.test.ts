@@ -43,7 +43,7 @@ describe("runReducer", () => {
     expect(s.simId).toBe("sim-1");
     s = runReducer(s, { type: "results", results: resultsMessage() });
     expect(s.phase).toBe("done");
-    expect(s.results?.metrics?.generated).toBe(1000);
+    expect(s.results?.metrics?.generated).toBe(1000n);
   });
 
   it("reset drops ALL previous artifacts (stale-data isolation)", () => {
