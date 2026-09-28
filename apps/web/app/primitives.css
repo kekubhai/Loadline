@@ -232,79 +232,6 @@
 }
 
 /* --------------------------------------------------------------------------
-   Tabs — underline style.
-   -------------------------------------------------------------------------- */
-
-.tabs {
-  display: flex;
-  gap: 0;
-  border-bottom: 1px solid var(--line-strong);
-}
-
-.tab {
-  appearance: none;
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  color: var(--ink-soft);
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  padding: 4px 10px;
-  cursor: pointer;
-}
-
-.tab:hover {
-  color: var(--ink);
-}
-
-.tab-active {
-  color: var(--ink);
-  font-weight: 600;
-  border-bottom-color: var(--ink);
-}
-
-/* --------------------------------------------------------------------------
-   Tooltip — CSS-only.
-   -------------------------------------------------------------------------- */
-
-.tooltip {
-  position: relative;
-  display: inline-flex;
-  border-bottom: 1px dotted var(--ink-faint);
-  cursor: help;
-}
-
-.tooltip::after {
-  content: attr(data-tip);
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 0;
-  z-index: 10;
-  width: max-content;
-  max-width: 260px;
-  font-size: 10px;
-  line-height: 1.4;
-  letter-spacing: normal;
-  text-transform: none;
-  color: var(--paper);
-  background: var(--ink);
-  border-radius: 2px;
-  padding: 4px 7px;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 80ms linear;
-  pointer-events: none;
-}
-
-.tooltip:hover::after,
-.tooltip:focus-within::after {
-  opacity: 1;
-  visibility: visible;
-}
-
-/* --------------------------------------------------------------------------
    Metric
    -------------------------------------------------------------------------- */
 
@@ -501,20 +428,6 @@
   margin: 1px 0;
 }
 
-.impacts {
-  margin: 4px 0 0;
-  padding: 6px 10px;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  list-style: none;
-  color: var(--ink-soft);
-  font-size: 11px;
-}
-
-.impacts li {
-  margin: 1px 0;
-}
 
 /* Prose lines (summaries, workload plan) inside panels. */
 .prose {

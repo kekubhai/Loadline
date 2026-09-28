@@ -36,8 +36,6 @@ import {
   Button,
   Divider,
   EmptyState,
-  Field,
-  Input,
   Metric,
   Panel,
   Section,
@@ -646,7 +644,3 @@ export function SimConsole({
     </div>
   );
 }
-
-/* Field + server-URL input are re-exported callers' concerns; the page
-   keeps the server field in its toolbar so both views share it. */
-export { Field };

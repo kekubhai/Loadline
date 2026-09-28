@@ -686,9 +686,39 @@
   .sim-columns {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
 
-  .sim-columns > .panel:first-child {
-    grid-column: 1 / -1;
+/* Post-run analysis: the Results + Bottleneck pair spans full width and
+   leads the view; everything else follows in the two-column grid. */
+.sim-analysis {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sim-first {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+@media (min-width: 900px) {
+  .sim-first {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Run inputs sit below the analysis: configure → run → read. */
+.sim-inputs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  margin-top: 10px;
+}
+
+@media (min-width: 900px) {
+  .sim-inputs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

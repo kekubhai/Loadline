@@ -45,7 +45,6 @@ import type {
   GetCapacityResponse,
   GetCostEstimateResponse,
   Link,
-  ProgressSnapshot,
   ProviderConfig,
   SimulationOptions,
   WorkloadSpec,
@@ -69,7 +68,6 @@ import { f0, f1, f2, pct } from "../components/format";
 import {
   Badge,
   Button,
-  Checkbox,
   Divider,
   EmptyState,
   Field,
@@ -378,7 +376,6 @@ type Phase = "idle" | "running" | "done" | "error";
 interface RunState {
   phase: Phase;
   simId: string | null;
-  progress: ProgressSnapshot | null;
   results: FinalResults | null;
   diagnosis: Diagnosis | null;
   capacity: GetCapacityResponse | null;
@@ -389,7 +386,6 @@ interface RunState {
 const initialRun: RunState = {
   phase: "idle",
   simId: null,
-  progress: null,
   results: null,
   diagnosis: null,
   capacity: null,
@@ -400,7 +396,6 @@ const initialRun: RunState = {
 type RunAction =
   | { type: "reset" }
   | { type: "created"; id: string }
-  | { type: "progress"; snap: ProgressSnapshot }
   | { type: "results"; results: FinalResults }
   | { type: "diagnosis"; diagnosis: Diagnosis }
   | { type: "capacity"; capacity: GetCapacityResponse }
@@ -413,10 +408,8 @@ function runReducer(s: RunState, a: RunAction): RunState {
       return initialRun;
     case "created":
       return { ...s, simId: a.id };
-    case "progress":
-      return { ...s, phase: "running", progress: a.snap };
     case "results":
-      return { ...s, phase: "done", progress: null, results: a.results };
+      return { ...s, phase: "done", results: a.results };
     case "diagnosis":
       return { ...s, diagnosis: a.diagnosis };
     case "capacity":
@@ -935,31 +928,9 @@ export default function Home() {
             }}
           />
 
-          <div className="sim-columns">
-            <Panel title="Workload" tag="inputs + backend-derived plan">
-              <WorkloadPanel
-                workload={editor.workload}
-                onPatch={onPatchWorkload}
-                plan={state.results?.plan ?? null}
-              />
-            </Panel>
-
-            <Panel title="Failure injection" tag="applies to the next run">
-              <FailurePanel
-                components={editor.architecture.components
-                  .filter((c) => c.kind !== ComponentKind.CLIENT)
-                  .map((c) => ({
-                    id: c.id,
-                    label: c.provider ? `${c.id} · ${c.provider}/${c.service}` : c.id,
-                  }))}
-                failures={editor.failures}
-                onAdd={onAddFailure}
-                onRemove={onRemoveFailure}
-              />
-            </Panel>
-
-            {state.results && m && (
-              <>
+          {state.results && m && (
+            <div className="sim-analysis">
+              <div className="sim-first">
                 <Panel
                   title="Results"
                   tag={
@@ -988,6 +959,12 @@ export default function Home() {
                   </Section>
                 </Panel>
 
+                <Panel title="Bottleneck" tag="most severe first · simulator-computed">
+                  <BottleneckPanel diagnosis={state.diagnosis} metrics={m} />
+                </Panel>
+              </div>
+
+              <div className="sim-columns">
                 <Panel title="Components">
                 <table>
                   <thead>
@@ -1021,13 +998,6 @@ export default function Home() {
                 </table>
               </Panel>
 
-              <Panel
-                title="Bottleneck"
-                tag="most severe first · simulator-computed"
-              >
-                <BottleneckPanel diagnosis={state.diagnosis} metrics={m} />
-              </Panel>
-
               <Panel title="Architecture status">
                 <HealthPanel
                   diagnosis={state.diagnosis}
@@ -1049,88 +1019,76 @@ export default function Home() {
               <Panel title="Cost">
                 <CostPanel estimate={state.cost?.estimate ?? null} />
               </Panel>
-            </>
+              </div>
+            </div>
           )}
+
+          <div className="sim-inputs">
+            <Panel title="Workload" tag="inputs + backend-derived plan">
+              <WorkloadPanel
+                workload={editor.workload}
+                onPatch={onPatchWorkload}
+                plan={state.results?.plan ?? null}
+              />
+            </Panel>
+
+            <Panel title="Failure injection" tag="applies to the next run">
+              <FailurePanel
+                components={editor.architecture.components
+                  .filter((c) => c.kind !== ComponentKind.CLIENT)
+                  .map((c) => ({
+                    id: c.id,
+                    label: c.provider ? `${c.id} · ${c.provider}/${c.service}` : c.id,
+                  }))}
+                failures={editor.failures}
+                onAdd={onAddFailure}
+                onRemove={onRemoveFailure}
+              />
+            </Panel>
           </div>
         </div>
       )}
 
       {/* ------------------------------------------------------ ops strip */}
       <footer className="ops-strip">
-        {state.progress ? (
-          <>
-            <div className="ops-cell ops-label">live · t={f0(state.progress.simTimeMs)}ms</div>
-            <div className="ops-scroll">
-              {state.progress.components.map((c) => (
-                <span key={c.componentId} className="ops-chip">
-                  <span className="ops-chip-id">{c.componentId}</span>
-                  <span className="ops-chip-val">q{c.queueDepth}</span>
-                  <span className="ops-chip-val">f{c.inFlight}</span>
-                  <span className="ops-chip-val">{pct(c.utilization)}</span>
-                </span>
-              ))}
-            </div>
-          </>
-        ) : (
-          <div className="ops-scroll">
-            {m ? (
-              <>
-                <span className="ops-chip">
-                  <span className="ops-chip-id">throughput</span>
-                  <span className="ops-chip-val">
-                    {f1(
-                      m.components.reduce((acc, c) => acc + c.throughputRps, 0) /
-                        Math.max(
-                          1,
-                          m.components.filter((c) => c.kind !== "client").length,
-                        ),
-                    )}{" "}
-                    rps
-                  </span>
-                </span>
-                <span className="ops-chip">
-                  <span className="ops-chip-id">p50</span>
-                  <span className="ops-chip-val">{f2(m.p50Ms)}ms</span>
-                </span>
-                <span className="ops-chip">
-                  <span className="ops-chip-id">p95</span>
-                  <span className="ops-chip-val">{f2(m.p95Ms)}ms</span>
-                </span>
-                <span className="ops-chip">
-                  <span className="ops-chip-id">p99</span>
-                  <span className="ops-chip-val">{f2(m.p99Ms)}ms</span>
-                </span>
-                <span className="ops-chip">
-                  <span className="ops-chip-id">errors</span>
-                  <span className="ops-chip-val">{pct(m.errorRate)}</span>
-                </span>
-                <span className="ops-chip">
-                  <span className="ops-chip-id">rejected</span>
-                  <span className="ops-chip-val">{f0(m.rejected)}</span>
-                </span>
-                <span className="ops-chip">
-                  <span className="ops-chip-id">util</span>
-                  <span className="ops-chip-val">
-                    {pct(
-                      m.components.reduce((acc, c) => acc + c.utilization, 0) /
-                        Math.max(1, m.components.length),
-                    )}
-                  </span>
-                </span>
-                <span className="ops-chip">
-                  <span className="ops-chip-id">queue</span>
-                  <span className="ops-chip-val">
-                    {m.components.reduce((acc, c) => acc + c.queueDepth, 0)}
-                  </span>
-                </span>
-              </>
-            ) : (
-              <span className="ops-empty">
-                no simulation data — run to populate the operations strip
+        <div className="ops-scroll">
+          {m ? (
+            <>
+              <span className="ops-chip">
+                <span className="ops-chip-id">completed</span>
+                <span className="ops-chip-val">{f0(m.completed)}</span>
               </span>
-            )}
-          </div>
-        )}
+              <span className="ops-chip">
+                <span className="ops-chip-id">p50</span>
+                <span className="ops-chip-val">{f2(m.p50Ms)}ms</span>
+              </span>
+              <span className="ops-chip">
+                <span className="ops-chip-id">p95</span>
+                <span className="ops-chip-val">{f2(m.p95Ms)}ms</span>
+              </span>
+              <span className="ops-chip">
+                <span className="ops-chip-id">p99</span>
+                <span className="ops-chip-val">{f2(m.p99Ms)}ms</span>
+              </span>
+              <span className="ops-chip">
+                <span className="ops-chip-id">errors</span>
+                <span className="ops-chip-val">{pct(m.errorRate)}</span>
+              </span>
+              <span className="ops-chip">
+                <span className="ops-chip-id">rejected</span>
+                <span className="ops-chip-val">{f0(m.rejected)}</span>
+              </span>
+              <span className="ops-chip">
+                <span className="ops-chip-id">window</span>
+                <span className="ops-chip-val">{f1(m.durationMs / 1000)}s</span>
+              </span>
+            </>
+          ) : (
+            <span className="ops-empty">
+              no simulation data — run to populate the operations strip
+            </span>
+          )}
+        </div>
         <div className="ops-spacer" />
         <StatusIndicator
           state={status.state}

@@ -213,48 +213,6 @@ export function toneForWord(word: string): Tone {
 }
 
 /* --------------------------------------------------------------------------
-   Tabs — underline style, no pills, no animation.
-   -------------------------------------------------------------------------- */
-
-export function Tabs({
-  tabs,
-  active,
-  onChange,
-}: {
-  tabs: string[];
-  active: string;
-  onChange: (id: string) => void;
-}) {
-  return (
-    <div className="tabs" role="tablist">
-      {tabs.map((t) => (
-        <button
-          key={t}
-          role="tab"
-          aria-selected={t === active}
-          className={`tab${t === active ? " tab-active" : ""}`}
-          onClick={() => onChange(t)}
-        >
-          {t}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-/* --------------------------------------------------------------------------
-   Tooltip — CSS-only, small dotted underline, no JS.
-   -------------------------------------------------------------------------- */
-
-export function Tooltip({ text, children }: { text: string; children: ReactNode }) {
-  return (
-    <span className="tooltip" data-tip={text}>
-      {children}
-    </span>
-  );
-}
-
-/* --------------------------------------------------------------------------
    Metric — one labeled value with optional unit and note.
    -------------------------------------------------------------------------- */
 
