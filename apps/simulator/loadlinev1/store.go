@@ -45,18 +45,6 @@ func (r *Run) Control() sim.SimRunControl {
 	return r.control
 }
 
-// SetStatusPaused marks the run PAUSED (control RPC side) and wakes
-// subscribers so StreamMetrics broadcasts the transition.
-func (r *Run) SetStatusPaused() {
-	r.SetStatus(v1.RunStatus_RUN_STATUS_PAUSED, "")
-}
-
-// SetStatusRunning marks the run RUNNING again (after a resume) and
-// wakes subscribers.
-func (r *Run) SetStatusRunning() {
-	r.SetStatus(v1.RunStatus_RUN_STATUS_RUNNING, "")
-}
-
 // SetStatusStopped publishes partial results and marks the run STOPPED
 // (a terminal state distinct from COMPLETED: the horizon was not
 // reached and the numbers are a partial view of the run).
@@ -124,6 +112,31 @@ func (r *Run) SetStatus(st v1.RunStatus, errMsg string) {
 	subs := r.snapshotSubsLocked()
 	r.mu.Unlock()
 	r.notifyAll(subs)
+}
+
+// TransitionStatus is a compare-and-set status change: it moves the
+// status to `to` only while the current status is still `from`, and
+// reports whether the transition happened.
+//
+// Control RPCs read the status before acting, so a run that finishes in
+// that window would otherwise be relabelled (a resume landing after
+// completion wrote RUNNING over COMPLETED, after which the finished
+// results were unreachable forever). Doing the check and the write under
+// one lock closes that window: the losing call sees false and must not
+// pretend the transition happened.
+func (r *Run) TransitionStatus(from, to v1.RunStatus, errMsg string) bool {
+	r.mu.Lock()
+	if r.Status != from {
+		r.mu.Unlock()
+		return false
+	}
+	r.Status = to
+	r.Err = errMsg
+	r.version++
+	subs := r.snapshotSubsLocked()
+	r.mu.Unlock()
+	r.notifyAll(subs)
+	return true
 }
 
 // SetProgress stores the latest progress snapshot and wakes subscribers.

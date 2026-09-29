@@ -106,6 +106,20 @@ func (s *Service) RunComparison(ctx context.Context, req *connect.Request[v1.Run
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
+			// Each architecture runs on its own goroutine, so a panic
+			// inside the engine would take down the whole process — the
+			// handler's own recover() never sees another goroutine's
+			// panic. Contain it to this entry instead: the other
+			// architectures still return real results.
+			defer func() {
+				if rec := recover(); rec != nil {
+					e := entries[i]
+					out[i] = &v1.ComparisonEntry{
+						Name:  e.name,
+						Error: fmt.Sprintf("engine panic: %v", rec),
+					}
+				}
+			}()
 			e := entries[i]
 			entry := &v1.ComparisonEntry{Name: e.name}
 			res, err := sim.Simulate(e.arch, wl, opts)
@@ -131,12 +145,15 @@ func (s *Service) RunComparison(ctx context.Context, req *connect.Request[v1.Run
 	}
 	wg.Wait()
 
+	result := &v1.ComparisonResult{
+		Workload: in.GetWorkload(),
+		Seed:     opts.Seed,
+		Entries:  out,
+	}
+	id := s.storeComparison(result)
 	return connect.NewResponse(&v1.RunComparisonResponse{
-		Result: &v1.ComparisonResult{
-			Workload: in.GetWorkload(),
-			Seed:     opts.Seed,
-			Entries:  out,
-		},
+		Result:       result,
+		ComparisonId: id,
 	}), nil
 }
 
@@ -152,6 +169,11 @@ func (s *Service) GetComparison(ctx context.Context, req *connect.Request[v1.Get
 	return connect.NewResponse(&v1.GetComparisonResponse{Result: res}), nil
 }
 
+// maxComparisons bounds the in-memory comparison store: comparisons are
+// re-runnable, so keeping the most recent window is enough and the
+// process never accumulates results forever.
+const maxComparisons = 32
+
 // storeComparison persists a comparison result under an assigned ID so
 // the frontend can re-open it without re-running.
 func (s *Service) storeComparison(res *v1.ComparisonResult) string {
@@ -160,5 +182,16 @@ func (s *Service) storeComparison(res *v1.ComparisonResult) string {
 	s.compSeq++
 	id := fmt.Sprintf("cmp-%d", s.compSeq)
 	s.comparisons[id] = res
+	// IDs are assigned in increasing order, so the lexicographically
+	// smallest is the oldest once the store is over budget.
+	if len(s.comparisons) > maxComparisons {
+		oldest := ""
+		for k := range s.comparisons {
+			if oldest == "" || k < oldest {
+				oldest = k
+			}
+		}
+		delete(s.comparisons, oldest)
+	}
 	return id
 }

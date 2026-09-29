@@ -438,9 +438,34 @@ func TestComparisonStoreRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The store assigns cmp-N ids; probe one via the service used above is
-	// not directly exposed, so verify determinism instead: a re-run equals
-	// the stored one.
+	id := res.Msg.GetComparisonId()
+	if id == "" {
+		t.Fatal("RunComparison must return the ID it stored the result under")
+	}
+
+	// The stored copy is the result just returned — same entries, same
+	// numbers, byte-for-byte.
+	stored, err := client.GetComparison(context.Background(), connect.NewRequest(&v1.GetComparisonRequest{ComparisonId: id}))
+	if err != nil {
+		t.Fatalf("GetComparison(%s): %v", id, err)
+	}
+	want, got := res.Msg.GetResult(), stored.Msg.GetResult()
+	if len(want.GetEntries()) != len(got.GetEntries()) {
+		t.Fatalf("stored entries = %d, want %d", len(got.GetEntries()), len(want.GetEntries()))
+	}
+	for i := range want.GetEntries() {
+		if want.GetEntries()[i].GetMetrics().GetP95Ms() != got.GetEntries()[i].GetMetrics().GetP95Ms() {
+			t.Fatalf("stored vs returned p95 diverged at entry %d: %f vs %f", i,
+				got.GetEntries()[i].GetMetrics().GetP95Ms(), want.GetEntries()[i].GetMetrics().GetP95Ms())
+		}
+	}
+
+	// Unknown IDs are NotFound, not an empty success.
+	if _, err := client.GetComparison(context.Background(), connect.NewRequest(&v1.GetComparisonRequest{ComparisonId: "cmp-does-not-exist"})); err == nil {
+		t.Fatal("expected NotFound for an unknown comparison id")
+	}
+
+	// Determinism: a re-run of the same request equals the stored one.
 	again, err := client.RunComparison(context.Background(), connect.NewRequest(&v1.RunComparisonRequest{
 		Workload:      compWorkload(),
 		Architectures: []*v1.ComparisonArchitectureInput{{Name: "aws", Architecture: awsArch(t)}, {Name: "gcp", Architecture: gcpArch(t)}},
@@ -449,12 +474,11 @@ func TestComparisonStoreRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := res.Msg.GetResult().GetEntries()
 	b := again.Msg.GetResult().GetEntries()
-	for i := range a {
-		if a[i].GetMetrics().GetP95Ms() != b[i].GetMetrics().GetP95Ms() {
+	for i := range want.GetEntries() {
+		if want.GetEntries()[i].GetMetrics().GetP95Ms() != b[i].GetMetrics().GetP95Ms() {
 			t.Fatalf("stored vs re-run p95 diverged: %f vs %f",
-				a[i].GetMetrics().GetP95Ms(), b[i].GetMetrics().GetP95Ms())
+				want.GetEntries()[i].GetMetrics().GetP95Ms(), b[i].GetMetrics().GetP95Ms())
 		}
 	}
 }

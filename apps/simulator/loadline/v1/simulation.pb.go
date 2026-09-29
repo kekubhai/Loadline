@@ -4127,8 +4127,11 @@ func (x *ComparisonResult) GetEntries() []*ComparisonEntry {
 }
 
 type RunComparisonResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Result        *ComparisonResult      `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Result *ComparisonResult      `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
+	// Server-assigned ID of the stored result; re-fetch it later with
+	// GetComparison.
+	ComparisonId  string `protobuf:"bytes,2,opt,name=comparison_id,json=comparisonId,proto3" json:"comparison_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4168,6 +4171,13 @@ func (x *RunComparisonResponse) GetResult() *ComparisonResult {
 		return x.Result
 	}
 	return nil
+}
+
+func (x *RunComparisonResponse) GetComparisonId() string {
+	if x != nil {
+		return x.ComparisonId
+	}
+	return ""
 }
 
 // GetComparisonRequest re-fetches a stored comparison result.
@@ -4807,9 +4817,10 @@ const file_loadline_v1_simulation_proto_rawDesc = "" +
 	"\x10ComparisonResult\x125\n" +
 	"\bworkload\x18\x01 \x01(\v2\x19.loadline.v1.WorkloadSpecR\bworkload\x12\x12\n" +
 	"\x04seed\x18\x02 \x01(\x04R\x04seed\x126\n" +
-	"\aentries\x18\x03 \x03(\v2\x1c.loadline.v1.ComparisonEntryR\aentries\"N\n" +
+	"\aentries\x18\x03 \x03(\v2\x1c.loadline.v1.ComparisonEntryR\aentries\"s\n" +
 	"\x15RunComparisonResponse\x125\n" +
-	"\x06result\x18\x01 \x01(\v2\x1d.loadline.v1.ComparisonResultR\x06result\";\n" +
+	"\x06result\x18\x01 \x01(\v2\x1d.loadline.v1.ComparisonResultR\x06result\x12#\n" +
+	"\rcomparison_id\x18\x02 \x01(\tR\fcomparisonId\";\n" +
 	"\x14GetComparisonRequest\x12#\n" +
 	"\rcomparison_id\x18\x01 \x01(\tR\fcomparisonId\"N\n" +
 	"\x15GetComparisonResponse\x125\n" +

@@ -119,7 +119,16 @@ func (s *Service) RunSimulation(ctx context.Context, req *connect.Request[v1.Run
 			fmt.Errorf("simulation %s already %s", r.ID, status))
 	}
 
+	// Claim the run under ONE lock: a check in one critical section and
+	// the claim in another lets two concurrent RunSimulation calls both
+	// pass and launch two engines over the same Run.
 	r.mu.Lock()
+	if r.Started {
+		status := r.Status
+		r.mu.Unlock()
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			fmt.Errorf("simulation %s already %s", r.ID, status))
+	}
 	r.Started = true
 	r.Status = v1.RunStatus_RUN_STATUS_RUNNING
 	r.mu.Unlock()
@@ -162,6 +171,10 @@ func (s *Service) execute(r *Run, wallDurationMS float64) {
 	r.SetControl(paced.Control())
 
 	res := paced.WaitResult()
+	if err := paced.Err(); err != nil {
+		r.SetStatus(v1.RunStatus_RUN_STATUS_FAILED, err.Error())
+		return
+	}
 	if res == nil {
 		r.SetStatus(v1.RunStatus_RUN_STATUS_FAILED, "engine returned no result")
 		return
@@ -199,7 +212,13 @@ func (s *Service) PauseSimulation(ctx context.Context, req *connect.Request[v1.P
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
 			fmt.Errorf("simulation %s is no longer running; cannot pause", r.ID))
 	}
-	r.SetStatusPaused()
+	// Claim the PAUSED status only if it is still RUNNING: a run that
+	// finished between the pre-check above and here must keep its
+	// terminal status.
+	if !r.TransitionStatus(v1.RunStatus_RUN_STATUS_RUNNING, v1.RunStatus_RUN_STATUS_PAUSED, "") {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			fmt.Errorf("simulation %s finished before the pause landed; status is %s", r.ID, r.currentStatus()))
+	}
 	return connect.NewResponse(&v1.PauseSimulationResponse{
 		SimulationId: r.ID, Status: v1.RunStatus_RUN_STATUS_PAUSED,
 	}), nil
@@ -226,7 +245,13 @@ func (s *Service) ResumeSimulation(ctx context.Context, req *connect.Request[v1.
 		applyWallDuration(ctl, req.Msg.GetWallDurationMs(), r.Sim.GetOptions().GetDurationMs())
 	}
 	ctl.Resume()
-	r.SetStatusRunning()
+	// Claim RUNNING only if the run is still PAUSED: a stale resume must
+	// never overwrite a terminal status (results would become
+	// unreachable for the lifetime of the process).
+	if !r.TransitionStatus(v1.RunStatus_RUN_STATUS_PAUSED, v1.RunStatus_RUN_STATUS_RUNNING, "") {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			fmt.Errorf("simulation %s finished before the resume landed; status is %s", r.ID, r.currentStatus()))
+	}
 	return connect.NewResponse(&v1.ResumeSimulationResponse{
 		SimulationId: r.ID, Status: v1.RunStatus_RUN_STATUS_RUNNING,
 	}), nil

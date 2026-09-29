@@ -606,6 +606,9 @@ message ComparisonResult {
 
 message RunComparisonResponse {
   ComparisonResult result = 1;
+  // Server-assigned ID of the stored result; re-fetch it later with
+  // GetComparison.
+  string comparison_id = 2;
 }
 
 // GetComparisonRequest re-fetches a stored comparison result.

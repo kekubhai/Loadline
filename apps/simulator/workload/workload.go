@@ -5,7 +5,10 @@
 // exactly how "1M users" became "peak RPS" — no hidden jumps.
 package workload
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 // Spec is the user-facing workload definition.
 type Spec struct {
@@ -50,6 +53,11 @@ type Plan struct {
 // SecondsPerDay is the divisor for requests/day → average RPS.
 const SecondsPerDay = 86400.0
 
+// finite reports whether v is neither NaN nor ±Inf. Range comparisons
+// are false for NaN, so every numeric field needs this check or it
+// would sail through validation and poison the derived plan.
+func finite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
+
 // Validate checks the spec's basic sanity.
 func (s Spec) Validate() error {
 	if s.TotalUsers <= 0 {
@@ -61,11 +69,20 @@ func (s Spec) Validate() error {
 	if s.DAU > s.TotalUsers {
 		return fmt.Errorf("workload: DAU (%d) cannot exceed TotalUsers (%d)", s.DAU, s.TotalUsers)
 	}
+	if !finite(s.RequestsPerUserPerDay) {
+		return fmt.Errorf("workload: RequestsPerUserPerDay must be a finite number, got %v", s.RequestsPerUserPerDay)
+	}
 	if s.RequestsPerUserPerDay <= 0 {
 		return fmt.Errorf("workload: RequestsPerUserPerDay must be > 0, got %f", s.RequestsPerUserPerDay)
 	}
+	if !finite(s.PeakMultiplier) {
+		return fmt.Errorf("workload: PeakMultiplier must be a finite number, got %v", s.PeakMultiplier)
+	}
 	if s.PeakMultiplier < 1 {
 		return fmt.Errorf("workload: PeakMultiplier must be >= 1, got %f", s.PeakMultiplier)
+	}
+	if !finite(s.ReadWriteRatio) {
+		return fmt.Errorf("workload: ReadWriteRatio must be a finite number, got %v", s.ReadWriteRatio)
 	}
 	if s.ReadWriteRatio <= 0 {
 		return fmt.Errorf("workload: ReadWriteRatio must be > 0, got %f", s.ReadWriteRatio)
@@ -93,6 +110,10 @@ func Derive(spec Spec) (Plan, error) {
 	p.RequestsPerDay = float64(spec.DAU) * spec.RequestsPerUserPerDay
 	p.AverageRPS = p.RequestsPerDay / SecondsPerDay
 	p.PeakRPS = p.AverageRPS * spec.PeakMultiplier
+	if !finite(p.PeakRPS) {
+		return Plan{}, fmt.Errorf(
+			"user workload: derived peak RPS is not finite (%v) — the user count or requests per user per day overflows float64", p.PeakRPS)
+	}
 	p.ReadFraction = spec.ReadWriteRatio / (spec.ReadWriteRatio + 1)
 	p.WriteFraction = 1 - p.ReadFraction
 	p.MeanInterArrivalMillis = 1000.0 / p.PeakRPS

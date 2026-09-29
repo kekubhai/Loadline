@@ -1,6 +1,16 @@
 package sim
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
+
+// finite reports whether v is neither NaN nor ±Inf. Every numeric check
+// in this package must go through it: range comparisons are false for
+// NaN, which would otherwise let poisoned values pass validation.
+func finite(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0)
+}
 
 // FailureType enumerates the V1 failure injections.
 type FailureType string
@@ -59,6 +69,13 @@ func (f Failure) validate(known map[string]ComponentSpec) error {
 	if _, ok := known[f.Target]; !ok {
 		return fmt.Errorf("failure: unknown target component %q", f.Target)
 	}
+	// NaN slips through every range comparison below (all of them are
+	// false for NaN), so reject non-finite parameters explicitly first:
+	// a NaN injected at run time would poison service times and metrics.
+	if !finite(f.StartMS) || !finite(f.DurationMS) {
+		return fmt.Errorf("failure on %s: StartMS and DurationMS must be finite, got StartMS=%v DurationMS=%v",
+			f.Target, f.StartMS, f.DurationMS)
+	}
 	if f.StartMS < 0 {
 		return fmt.Errorf("failure on %s: StartMS cannot be negative", f.Target)
 	}
@@ -69,16 +86,19 @@ func (f Failure) validate(known map[string]ComponentSpec) error {
 	case FailureCrash:
 		// no extra config required
 	case FailureLatency:
-		if f.Config.AddedLatencyMillis <= 0 {
-			return fmt.Errorf("failure on %s: AddedLatencyMillis must be > 0 for increased_latency", f.Target)
+		if !finite(f.Config.AddedLatencyMillis) || f.Config.AddedLatencyMillis <= 0 {
+			return fmt.Errorf("failure on %s: AddedLatencyMillis must be a finite value > 0 for increased_latency, got %v",
+				f.Target, f.Config.AddedLatencyMillis)
 		}
 	case FailureErrorRate:
-		if f.Config.ErrorRate < 0 || f.Config.ErrorRate > 1 {
-			return fmt.Errorf("failure on %s: ErrorRate must be in [0,1], got %f", f.Target, f.Config.ErrorRate)
+		if !finite(f.Config.ErrorRate) || f.Config.ErrorRate < 0 || f.Config.ErrorRate > 1 {
+			return fmt.Errorf("failure on %s: ErrorRate must be a finite value in [0,1], got %v", f.Target, f.Config.ErrorRate)
 		}
 	case FailureNetwork:
-		if f.Config.AddedLatencyMillis < 0 || f.Config.PacketLossRate < 0 || f.Config.PacketLossRate > 1 {
-			return fmt.Errorf("failure on %s: network failure needs AddedLatencyMillis >= 0 and PacketLossRate in [0,1]", f.Target)
+		if !finite(f.Config.AddedLatencyMillis) || !finite(f.Config.PacketLossRate) ||
+			f.Config.AddedLatencyMillis < 0 || f.Config.PacketLossRate < 0 || f.Config.PacketLossRate > 1 {
+			return fmt.Errorf("failure on %s: network failure needs finite AddedLatencyMillis >= 0 and PacketLossRate in [0,1], got AddedLatencyMillis=%v PacketLossRate=%v",
+				f.Target, f.Config.AddedLatencyMillis, f.Config.PacketLossRate)
 		}
 	default:
 		return fmt.Errorf("failure on %s: unknown type %q", f.Target, f.Type)

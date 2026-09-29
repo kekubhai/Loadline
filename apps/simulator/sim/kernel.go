@@ -296,6 +296,70 @@ func newKernel(arch Architecture, plan workload.Plan, opts Options) *Kernel {
 
 func (k *Kernel) rt(id string) *ComponentRuntime { return k.runtimes[id] }
 
+// maxRetries bounds Retry.MaxRetries. The backoff term doubles per
+// attempt (1 << (attempt-2)), so an unbounded retry count would shift
+// into sign overflow and schedule a NEGATIVE delay — which the engine
+// rejects by panicking. 32 is far past any sane policy.
+const maxRetries = 32
+
+// maxPeakRPS is the highest offered rate the arrival chain can express.
+// The gap between arrivals is 1e9/PeakRPS nanoseconds; above this bound
+// the gap truncates to zero and arrivals reschedule at t=0 forever,
+// never reaching the horizon.
+const maxPeakRPS = 1_000_000_000
+
+// maxRequestsPerRun bounds the arrivals one horizon may generate. A
+// discrete-event run processes a few million events per second, so a
+// workload whose arrivals alone exceed this budget would occupy the
+// server for minutes with no user-visible progress. Rejected up front,
+// with the arithmetic shown, instead of stalling.
+const maxRequestsPerRun = 50_000_000
+
+// maxEventBudget is the engine's runaway guard for one simulation. It
+// only trips when arrivals or retries stop making forward progress
+// (e.g. an inter-arrival gap that rounds to zero); a healthy run is
+// orders of magnitude below it. Reaching it stops the run honestly with
+// stop_reason "max_events" instead of hanging the server.
+const maxEventBudget uint64 = 100_000_000
+
+// validateOptions rejects option values the engine cannot execute. It
+// runs before any goroutine or event is created, so bad options surface
+// as an error rather than as a mid-run panic or a silently NaN result.
+func validateOptions(opts Options, plan workload.Plan, known map[string]ComponentSpec) error {
+	if opts.DurationMS != 0 && !finite(opts.DurationMS) {
+		return fmt.Errorf("sim: options: DurationMS must be a finite number of milliseconds, got %v", opts.DurationMS)
+	}
+	if opts.TrackWindows < 0 {
+		return fmt.Errorf("sim: options: TrackWindows cannot be negative, got %d", opts.TrackWindows)
+	}
+	if opts.Retry.MaxRetries < 0 || opts.Retry.MaxRetries > maxRetries {
+		return fmt.Errorf("sim: options: Retry.MaxRetries must be between 0 and %d, got %d", maxRetries, opts.Retry.MaxRetries)
+	}
+	if !finite(opts.Retry.BackoffBaseMS) || opts.Retry.BackoffBaseMS < 0 {
+		return fmt.Errorf("sim: options: Retry.BackoffBaseMS must be a finite value >= 0, got %v", opts.Retry.BackoffBaseMS)
+	}
+	if !finite(opts.Retry.TimeoutMS) || opts.Retry.TimeoutMS < 0 {
+		return fmt.Errorf("sim: options: Retry.TimeoutMS must be a finite value >= 0, got %v", opts.Retry.TimeoutMS)
+	}
+	for _, id := range opts.RetryOn {
+		if _, ok := known[id]; !ok {
+			return fmt.Errorf("sim: options: RetryOn names unknown component %q", id)
+		}
+	}
+	// Run-size guards: derived from the load plan, enforced before the
+	// first event is scheduled.
+	if plan.PeakRPS > maxPeakRPS {
+		return fmt.Errorf("sim: workload: peak %.0f rps exceeds the simulatable ceiling of %.0f rps — the arrival chain cannot express a sub-nanosecond gap",
+			plan.PeakRPS, float64(maxPeakRPS))
+	}
+	expected := plan.PeakRPS * opts.DurationMS / 1000
+	if expected > maxRequestsPerRun {
+		return fmt.Errorf("sim: workload: %.0f rps over a %.0fms horizon would generate about %.0f requests (limit %.0f) — shorten the horizon or lower the offered load",
+			plan.PeakRPS, opts.DurationMS, expected, float64(maxRequestsPerRun))
+	}
+	return nil
+}
+
 // Simulate validates the inputs, derives the load plan, runs the discrete
 // event simulation, and reports metrics. It is fully deterministic:
 // identical (architecture, workload, options) produce identical results.
@@ -317,6 +381,9 @@ func Simulate(arch Architecture, spec workload.Spec, opts Options) (*RunResult, 
 	for _, c := range arch.Components {
 		known[c.ID] = c
 	}
+	if err := validateOptions(opts, plan, known); err != nil {
+		return nil, err
+	}
 	for i, f := range opts.Failures {
 		if err := f.validate(known); err != nil {
 			return nil, fmt.Errorf("sim: failure %d: %w", i, err)
@@ -331,6 +398,7 @@ func Simulate(arch Architecture, spec workload.Spec, opts Options) (*RunResult, 
 	sched := engine.NewScheduler(pq, clock)
 	sched.SetSeed(opts.Seed)
 	runner := engine.NewRunner(sched, clock)
+	runner.MaxEvents = maxEventBudget
 
 	k := newKernel(arch, plan, opts)
 	runner.Horizon = engine.Time(delay(opts.DurationMS))

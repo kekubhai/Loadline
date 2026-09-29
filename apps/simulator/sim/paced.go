@@ -2,6 +2,7 @@ package sim
 
 import (
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -16,6 +17,12 @@ type PacedRun struct {
 	control SimRunControl // engine.Runner
 	done    chan struct{} // closed when the goroutine finishes
 	result  atomic.Pointer[RunResult]
+
+	// Fatal error recovered inside the run goroutine (see Err). Guarded
+	// by errMu because the writer is that goroutine and the reader is
+	// whoever observes Done.
+	errMu sync.Mutex
+	err   error
 }
 
 // Control returns the run-control handle (Pause/Resume/Stop/Paused).
@@ -63,6 +70,9 @@ func StartPaced(arch Architecture, spec workload.Spec, opts Options, wallDuratio
 	for _, c := range arch.Components {
 		known[c.ID] = c
 	}
+	if err := validateOptions(opts, plan, known); err != nil {
+		return nil, err
+	}
 	for i, f := range opts.Failures {
 		if err := f.validate(known); err != nil {
 			return nil, fmt.Errorf("sim: failure %d: %w", i, err)
@@ -77,6 +87,7 @@ func StartPaced(arch Architecture, spec workload.Spec, opts Options, wallDuratio
 	sched := engine.NewScheduler(pq, clock)
 	sched.SetSeed(opts.Seed)
 	runner := engine.NewRunner(sched, clock)
+	runner.MaxEvents = maxEventBudget
 
 	k := newKernel(arch, plan, opts)
 	runner.Horizon = engine.Time(delay(opts.DurationMS))
@@ -141,8 +152,17 @@ func StartPaced(arch Architecture, spec workload.Spec, opts Options, wallDuratio
 	done := make(chan struct{})
 	p := &PacedRun{control: runner, done: done}
 
+	// The run executes on this goroutine, far from the caller's deferred
+	// recover(). An engine panic here (negative delay, exhausted event
+	// budget arithmetic, …) must fail THIS run, not the whole server, so
+	// the goroutine recovers and publishes a result carrying the error.
 	go func() {
 		defer close(done)
+		defer func() {
+			if rec := recover(); rec != nil {
+				p.setErr(fmt.Errorf("sim: engine panic: %v", rec))
+			}
+		}()
 		events := runner.Run()
 		p.result.Store(&RunResult{
 			Plan:    plan,
@@ -152,6 +172,24 @@ func StartPaced(arch Architecture, spec workload.Spec, opts Options, wallDuratio
 	}()
 
 	return p, nil
+}
+
+// Err reports a fatal error captured while the paced goroutine was
+// running (an engine panic recovered in place). It is safe to call after
+// Done closes; before that it returns nil.
+func (p *PacedRun) Err() error {
+	p.errMu.Lock()
+	defer p.errMu.Unlock()
+	return p.err
+}
+
+// setErr records a fatal run error exactly once.
+func (p *PacedRun) setErr(err error) {
+	p.errMu.Lock()
+	defer p.errMu.Unlock()
+	if p.err == nil {
+		p.err = err
+	}
 }
 
 // SetTick re-targets the wall-clock pace of a live run (speed control).
