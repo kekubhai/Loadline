@@ -310,3 +310,75 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ==========================================================================
+   Architecture comparison view (Step 9)
+   ========================================================================== */
+
+.cmp-setup {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr);
+  gap: var(--gap, 12px);
+}
+
+.cmp-save-row,
+.cmp-run-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.cmp-run-row {
+  align-items: center;
+  border-top: 1px solid var(--line, #ddd);
+  padding-top: 10px;
+}
+
+.cmp-save-row .field {
+  flex: 0 0 auto;
+}
+
+.cmp-table-wrap {
+  overflow-x: auto;
+}
+
+.cmp-table th,
+.cmp-table td {
+  white-space: nowrap;
+}
+
+.cmp-table tbody tr:first-child td {
+  color: var(--dim, #666);
+}
+
+.cmp-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.cmp-col {
+  border: 1px solid var(--line, #ddd);
+  padding: 10px;
+  min-width: 0;
+}
+
+.cmp-col .diag {
+  margin-top: 8px;
+}
+
+.cmp-line-note {
+  display: block;
+  font-size: 11px;
+  color: var(--dim, #666);
+}
+
+.cmp-remove {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+tr.cmp-selected td {
+  background: rgba(0, 0, 0, 0.03);
+}

@@ -43,6 +43,7 @@ import { SimConsole } from "../components/simconsole";
 import type { SimOutcome } from "../components/simconsole";
 import { WorkloadPanel } from "../components/workloadpanel";
 import { FailurePanel } from "../components/failurepanel";
+import { ComparisonView } from "../components/comparisonview";
 import {
   BottleneckPanel,
   CapacityPanel,
@@ -327,7 +328,7 @@ export default function Home() {
           </span>
         </div>
         <nav className="topnav-views" aria-label="views">
-          {["architecture", "simulation"].map((v) => (
+          {["architecture", "simulation", "comparison"].map((v) => (
             <button
               key={v}
               type="button"
@@ -458,6 +459,40 @@ export default function Home() {
               onFocusComponent={onFocusComponent}
             />
           </aside>
+        </div>
+      ) : view === "comparison" ? (
+        /* -------------------------------------------- comparison view */
+        <div className="sim-view">
+          <div className="sim-toolbar">
+            <Field label="server">
+              <Input value={serverUrl} onChange={setServerUrl} width={220} />
+            </Field>
+            <span className="sim-toolbar-note">
+              save architectures, then compare them under the exact same
+              workload, seed, and failure scenario
+            </span>
+          </div>
+          <ComparisonView
+            architecture={editor.architecture}
+            workload={editor.workload}
+            options={
+              editor.failures.length > 0
+                ? { ...editor.options, failures: editor.failures }
+                : editor.options
+            }
+            runComparison={async ({ workload, architectures, options }) => {
+              const res = await client.runComparison({
+                workload,
+                options,
+                architectures: architectures.map((a) => ({
+                  name: a.name,
+                  architecture: a.architecture,
+                })),
+              });
+              if (!res.result) throw new Error("backend returned no comparison result");
+              return res.result;
+            }}
+          />
         </div>
       ) : (
         /* --------------------------------------------- simulation view */
