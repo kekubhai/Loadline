@@ -39,8 +39,12 @@ import { ArchitectureCanvas } from "../components/canvas";
 import type { CanvasHandles } from "../components/canvas";
 import { Inspector } from "../components/inspector";
 import { Palette } from "../components/palette";
+import {
+  CommandPalette,
+  type Command,
+} from "../components/commandpalette";
 import { SimConsole } from "../components/simconsole";
-import type { SimOutcome } from "../components/simconsole";
+import type { SimConsoleHandles, SimOutcome } from "../components/simconsole";
 import { WorkloadPanel } from "../components/workloadpanel";
 import { FailurePanel } from "../components/failurepanel";
 import { ComparisonView } from "../components/comparisonview";
@@ -71,12 +75,21 @@ import {
   toneForWord,
 } from "../components/ui";
 import {
-  editorReducer,
   initialEditorState,
   validateArchitecture,
   kindRole,
   kindFromProtoName,
 } from "./editor";
+import type { EditAction, EditorState } from "./editor";
+import { canRedo, canUndo, historyOf, historyReducer } from "./history";
+import {
+  decodeShareHash,
+  encodeShareHash,
+  exportDocument,
+  parseDocument,
+  serializeDocument,
+} from "./documentio";
+import { TEMPLATES, templateById, templateState } from "./templates";
 import {
   runReducer,
   initialRun,
@@ -89,15 +102,38 @@ import type { PageRunState } from "./runstate";
 
 export default function Home() {
   const [serverUrl, setServerUrl] = useState("http://localhost:8080");
-  const [editor, dispatch] = useReducer(editorReducer, initialEditorState);
+  /**
+   * The editor document with undo/redo. `dispatch` is the edit path all
+   * panels use; history is a layer around it, not a second source of
+   * truth: `editor` is always `hist.present`.
+   */
+  const [hist, dispatchHist] = useReducer(
+    historyReducer,
+    initialEditorState,
+    historyOf,
+  );
+  const editor = hist.present;
+  const dispatch = useCallback(
+    (action: EditAction) => dispatchHist({ type: "edit", action }),
+    [],
+  );
+  const undo = useCallback(() => dispatchHist({ type: "undo" }), []);
+  const redo = useCallback(() => dispatchHist({ type: "redo" }), []);
+  const loadState = useCallback(
+    (state: EditorState) => dispatchHist({ type: "load", state }),
+    [],
+  );
   const [state, runDispatch] = useReducer(runReducer, initialRun);
   const [view, setView] = useState("architecture");
   const [catalog, setCatalog] = useState<CatalogService[] | null>(null);
   const [catalogError, setCatalogError] = useState("");
+  /** Command palette (⌘/Ctrl+K). */
+  const [paletteOpen, setPaletteOpen] = useState(false);
   /** Console-owned run state: active flag + last terminal outcome. */
   const [pageRun, setPageRun] = useState<PageRunState>({ active: false, outcome: null });
 
   const canvasHandles = useRef<CanvasHandles | null>(null);
+  const consoleHandles = useRef<SimConsoleHandles | null>(null);
 
   const client = useMemo(
     () => createLoadlineClient({ baseUrl: serverUrl }),
@@ -190,6 +226,11 @@ export default function Home() {
     [],
   );
 
+  const onDuplicateComponent = useCallback(
+    (id: string) => dispatch({ type: "duplicateComponent", id }),
+    [],
+  );
+
   const onPatchLink = useCallback(
     (index: number, condition: string) =>
       dispatch({ type: "patchLink", index, condition }),
@@ -230,6 +271,96 @@ export default function Home() {
   const onFocusComponent = useCallback((id: string) => {
     dispatch({ type: "select", id });
   }, []);
+
+  /* ------------------------------------------------------- document I/O -- */
+
+  /** One-shot status line for import/share actions (transient). */
+  const [notice, setNotice] = useState("");
+  const fileInput = useRef<HTMLInputElement | null>(null);
+
+  const onExport = useCallback(() => {
+    const doc = exportDocument(editor);
+    const blob = new Blob([serializeDocument(doc)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = window.document.createElement("a");
+    a.href = url;
+    a.download = `${editor.architecture.name || "architecture"}.loadline.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setNotice("architecture exported as JSON");
+  }, [editor]);
+
+  const onImportFile = useCallback(
+    async (file: File) => {
+      try {
+        const text = await file.text();
+        const parsed = parseDocument(text);
+        loadState({
+          ...editor,
+          architecture: parsed.architecture,
+          positions: parsed.positions,
+          workload: parsed.workload ?? editor.workload,
+          options: parsed.options ?? editor.options,
+          failures: parsed.failures,
+          selected: null,
+        });
+        setNotice(`imported ${parsed.architecture.name || file.name}`);
+      } catch (e) {
+        setNotice(`import failed — ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    [editor, loadState],
+  );
+
+  const onShare = useCallback(async () => {
+    const hash = encodeShareHash(exportDocument(editor));
+    const url = `${window.location.origin}${window.location.pathname}${hash}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setNotice("share link copied — it contains the whole architecture");
+    } catch {
+      window.location.hash = hash.slice(1);
+      setNotice("share link put in the address bar (clipboard unavailable)");
+    }
+  }, [editor]);
+
+  const onTemplate = useCallback(
+    (id: string) => {
+      const t = templateById(id);
+      if (!t) return;
+      loadState(templateState(t, editor));
+      setNotice(`loaded template: ${t.name}`);
+    },
+    [editor, loadState],
+  );
+
+  // A shared link opens as the architecture it encodes.
+  useEffect(() => {
+    const doc = decodeShareHash(window.location.hash);
+    if (!doc) return;
+    try {
+      const parsed = parseDocument(JSON.stringify(doc));
+      loadState({
+        ...initialEditorState,
+        architecture: parsed.architecture,
+        positions: parsed.positions,
+        workload: parsed.workload ?? initialEditorState.workload,
+        options: parsed.options ?? initialEditorState.options,
+        failures: parsed.failures,
+      });
+      setNotice("loaded architecture from the share link");
+    } catch (e) {
+      setNotice(`share link rejected — ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [loadState]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const t = window.setTimeout(() => setNotice(""), 6000);
+    return () => window.clearTimeout(t);
+  }, [notice]);
 
   /* ------------------------------------------------------------- running -- */
 
@@ -272,6 +403,19 @@ export default function Home() {
 
   /* --------------------------------------------------- canvas projections -- */
 
+  /**
+   * Diagnosis severity per component. Bottlenecks arrive most-severe-first,
+   * so the first entry for an id wins; used for canvas highlighting.
+   */
+  const severityByComponent = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const b of state.diagnosis?.bottlenecks ?? []) {
+      if (!b.componentId || map.has(b.componentId)) continue;
+      map.set(b.componentId, b.severity || "moderate");
+    }
+    return map;
+  }, [state.diagnosis]);
+
   const canvasNodes = useMemo(
     () =>
       editor.architecture.components.map((c) => {
@@ -282,16 +426,28 @@ export default function Home() {
           sub: hasProvider ? `${c.provider}/${c.service}` : kindRole(c.kind),
           role: kindRole(c.kind),
           faulted: editor.failures.some((f) => f.target === c.id),
+          severity: metric ? severityByComponent.get(c.id) : undefined,
           pos: editor.positions[c.id],
           metrics: metric
             ? {
                 rps: metric.arrivalRps,
                 util: metric.utilization,
+                queue: metric.maxQueueDepth,
+                headroom:
+                  metric.capacityRps > 0
+                    ? Math.max(0, 1 - metric.arrivalRps / metric.capacityRps)
+                    : undefined,
               }
             : undefined,
         };
       }),
-    [editor.architecture.components, editor.failures, editor.positions, m],
+    [
+      editor.architecture.components,
+      editor.failures,
+      editor.positions,
+      m,
+      severityByComponent,
+    ],
   );
 
   const canvasEdges: { from: string; to: string; label?: string }[] =
@@ -302,9 +458,20 @@ export default function Home() {
     }));
 
   const metricsByComponent = useMemo(() => {
-    const map = new Map<string, { rps?: number; util?: number }>();
+    const map = new Map<
+      string,
+      { rps?: number; util?: number; queue?: number; headroom?: number }
+    >();
     for (const c of m?.components ?? []) {
-      map.set(c.id, { rps: c.arrivalRps, util: c.utilization });
+      map.set(c.id, {
+        rps: c.arrivalRps,
+        util: c.utilization,
+        queue: c.maxQueueDepth,
+        headroom:
+          c.capacityRps > 0
+            ? Math.max(0, 1 - c.arrivalRps / c.capacityRps)
+            : undefined,
+      });
     }
     return map;
   }, [m]);
@@ -319,6 +486,165 @@ export default function Home() {
     () => validateArchitecture(editor.architecture, editor.failures),
     [editor.architecture, editor.failures],
   );
+
+  /* ------------------------------------------------------- shortcuts -- */
+
+  /**
+   * Start a run from anywhere (keyboard, palette). The console only exists
+   * on the simulation view, so the view switch happens first and the run
+   * request follows after React has mounted it.
+   */
+  const runSimulation = useCallback(() => {
+    if (warnings.length > 0 || consoleHandles.current?.isBusy()) return;
+    setView("simulation");
+    window.setTimeout(() => consoleHandles.current?.run(), 0);
+  }, [warnings.length]);
+
+  const commands = useMemo<Command[]>(() => {
+    const cmd = (
+      id: string,
+      group: string,
+      label: string,
+      hint: string | undefined,
+      run: () => void,
+    ): Command => ({ id, group, label, hint, run });
+    const list: Command[] = [
+      cmd("view-arch", "view", "Go to architecture", undefined, () =>
+        setView("architecture"),
+      ),
+      cmd("view-sim", "view", "Go to simulation", undefined, () =>
+        setView("simulation"),
+      ),
+      cmd("view-cmp", "view", "Go to comparison", undefined, () =>
+        setView("comparison"),
+      ),
+      cmd("run", "simulation", "Run simulation", "R", runSimulation),
+      cmd(
+        "stop",
+        "simulation",
+        "Stop the active run",
+        undefined,
+        () => consoleHandles.current?.stop(),
+      ),
+      cmd("fit", "canvas", "Fit view", "F", () => canvasHandles.current?.fit()),
+      cmd(
+        "reset-view",
+        "canvas",
+        "Reset layout and view",
+        undefined,
+        () => canvasHandles.current?.reset(),
+      ),
+      cmd("undo", "edit", "Undo", "⌘Z", undo),
+      cmd("redo", "edit", "Redo", "⇧⌘Z", redo),
+      cmd(
+        "add-client",
+        "edit",
+        "Add client / users node",
+        undefined,
+        () => dispatch({ type: "addClient" }),
+      ),
+      cmd("export", "document", "Export architecture as JSON", "⌘S", onExport),
+      cmd("import", "document", "Import architecture from file", undefined, () =>
+        fileInput.current?.click(),
+      ),
+      cmd(
+        "share",
+        "document",
+        "Copy share link",
+        undefined,
+        () => void onShare(),
+      ),
+      ...TEMPLATES.map((t) =>
+        cmd(
+          `template-${t.id}`,
+          "template",
+          `Start from ${t.name}`,
+          undefined,
+          () => onTemplate(t.id),
+        ),
+      ),
+    ];
+    return list;
+  }, [onExport, onShare, onTemplate, redo, runSimulation, undo]);
+
+  /**
+   * Global keyboard layer. Typing in a field never triggers an editor
+   * action; modifiers are reserved for the app (⌘/Ctrl+K palette,
+   * ⌘/Ctrl+Z/Y history, ⌘/Ctrl+S export) so browser defaults stay
+   * intact for everything else.
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      const typing =
+        !!t &&
+        (tag === "INPUT" ||
+          tag === "TEXTAREA" ||
+          tag === "SELECT" ||
+          t.isContentEditable);
+      const mod = e.metaKey || e.ctrlKey;
+      const key = e.key.toLowerCase();
+
+      if (mod && key === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+        return;
+      }
+      if (mod && key === "z") {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+        return;
+      }
+      if (mod && key === "y") {
+        e.preventDefault();
+        redo();
+        return;
+      }
+      if (mod && key === "s") {
+        e.preventDefault();
+        onExport();
+        return;
+      }
+      if (typing) return;
+
+      if (e.key === "Escape") {
+        // Escape clears selection/overlay only. It deliberately does not
+        // stop a run: a stray keypress must not discard a simulation.
+        if (paletteOpen) setPaletteOpen(false);
+        else if (editor.selected) dispatch({ type: "select", id: null });
+        return;
+      }
+      if (e.key === "Delete" || e.key === "Backspace") {
+        const sel = editor.selected;
+        if (!sel) return;
+        e.preventDefault();
+        if (sel.startsWith("link:")) {
+          const index = Number(sel.slice(5));
+          if (Number.isInteger(index)) dispatch({ type: "deleteLink", index });
+        } else {
+          dispatch({ type: "deleteComponent", id: sel });
+        }
+        return;
+      }
+      if (e.key === " ") {
+        if (!consoleHandles.current?.isBusy()) return;
+        e.preventDefault();
+        consoleHandles.current.togglePause();
+        return;
+      }
+      if (key === "f") {
+        canvasHandles.current?.fit();
+        return;
+      }
+      if (key === "r") {
+        runSimulation();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [dispatch, editor.selected, onExport, paletteOpen, redo, runSimulation, undo]);
 
   /* --------------------------------------------------------------- views -- */
 
@@ -373,6 +699,13 @@ export default function Home() {
         </div>
       )}
 
+      {notice && (
+        <div className="banner" role="status">
+          <span className="banner-mark">›</span>
+          <span>{notice}</span>
+        </div>
+      )}
+
       {view === "architecture" ? (
         <div className="workbench">
           {/* --------------------------------------------------- left rail */}
@@ -410,6 +743,84 @@ export default function Home() {
                 reset view
               </button>
             </div>
+
+            <div className="pal-head">Document</div>
+            <div className="pal-actions">
+              <button
+                type="button"
+                className="btn btn-default pal-action"
+                onClick={undo}
+                disabled={!canUndo(hist)}
+                title="undo (Ctrl+Z)"
+              >
+                undo
+              </button>
+              <button
+                type="button"
+                className="btn btn-default pal-action"
+                onClick={redo}
+                disabled={!canRedo(hist)}
+                title="redo (Ctrl+Shift+Z)"
+              >
+                redo
+              </button>
+              <button
+                type="button"
+                className="btn btn-default pal-action"
+                onClick={onExport}
+                title="download the architecture as JSON (Ctrl+S)"
+              >
+                export json
+              </button>
+              <button
+                type="button"
+                className="btn btn-default pal-action"
+                onClick={() => fileInput.current?.click()}
+                title="load an architecture file"
+              >
+                import json
+              </button>
+              <button
+                type="button"
+                className="btn btn-default pal-action"
+                onClick={() => void onShare()}
+                title="copy a link that contains this architecture"
+              >
+                copy share link
+              </button>
+            </div>
+            <input
+              ref={fileInput}
+              type="file"
+              accept="application/json,.json"
+              className="visually-hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void onImportFile(f);
+                e.target.value = "";
+              }}
+            />
+
+            <div className="pal-head">Start from</div>
+            <div className="tpl-list">
+              {TEMPLATES.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  className={`tpl-row${editor.architecture.name === t.architecture.name ? " active" : ""}`}
+                  title={t.description}
+                  onClick={() => onTemplate(t.id)}
+                >
+                  <span className="tpl-name">{t.name}</span>
+                  <span className="tpl-note">
+                    {t.architecture.components.length} nodes
+                  </span>
+                </button>
+              ))}
+            </div>
+            <p className="pal-note">
+              ⌘K commands · ⌘Z undo · R run · F fit · Del remove
+            </p>
           </aside>
 
           {/* ------------------------------------------------------ canvas */}
@@ -435,6 +846,7 @@ export default function Home() {
               onConnect={onConnect}
               onDeleteNode={onDeleteComponent}
               onDeleteEdge={onDeleteLink}
+              onDuplicateNode={onDuplicateComponent}
               onDropService={onDropService}
               handleRef={canvasHandles}
             />
@@ -549,6 +961,7 @@ export default function Home() {
               setPageRun((p) => ({ ...p, outcome: o }));
               onConsoleOutcome(o);
             }}
+            handleRef={consoleHandles}
           />
 
           {state.results && m && (
@@ -773,6 +1186,12 @@ export default function Home() {
           label={state.simId ? `sim ${state.simId}` : status.label}
         />
       </footer>
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        commands={commands}
+      />
     </div>
   );
 }

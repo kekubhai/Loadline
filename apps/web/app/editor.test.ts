@@ -116,6 +116,37 @@ describe("build architecture", () => {
     expect(s.failures.some((f) => f.target === "cache")).toBe(false);
   });
 
+  it("duplicates a component without touching links", () => {
+    let s = editorReducer(initialEditorState, {
+      type: "moveNode",
+      id: "cache",
+      x: 100,
+      y: 50,
+    });
+    const src = s.architecture.components.find((c) => c.id === "cache");
+    const linkCount = s.architecture.links.length;
+    s = editorReducer(s, { type: "duplicateComponent", id: "cache" });
+
+    const copy = s.architecture.components.find((c) => c.id === "cache-copy");
+    expect(copy).toBeDefined();
+    expect(copy!.provider).toBe(src!.provider);
+    expect(copy!.service).toBe(src!.service);
+    expect(copy!.kind).toBe(src!.kind);
+    expect(s.architecture.components).toHaveLength(
+      initialEditorState.architecture.components.length + 1,
+    );
+    // Duplicating a node does not silently rewire traffic.
+    expect(s.architecture.links).toHaveLength(linkCount);
+    expect(s.selected).toBe("cache-copy");
+    expect(s.positions["cache-copy"]).toEqual({ x: 132, y: 82 });
+
+    // A second duplicate walks the id suffix instead of colliding.
+    s = editorReducer(s, { type: "duplicateComponent", id: "cache" });
+    expect(
+      s.architecture.components.filter((c) => c.id.startsWith("cache-copy")),
+    ).toHaveLength(2);
+  });
+
   it("edits link conditions and deletes links by index", () => {
     let s = editorReducer(initialEditorState, { type: "patchLink", index: 1, condition: "read" });
     expect(s.architecture.links[1].condition).toBe("read");

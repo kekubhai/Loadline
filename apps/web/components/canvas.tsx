@@ -33,10 +33,19 @@ export interface CanvasNode {
   role: string;
   /** True while a failure injection targets this component. */
   faulted?: boolean;
+  /** Diagnosis severity for this component ("critical" | "high" | "moderate"). */
+  severity?: string;
   /** Persistent user position; undefined = auto layered layout. */
   pos?: { x: number; y: number };
   /** Compact measured values from the last run (display only). */
-  metrics?: { rps?: number; util?: number };
+  metrics?: {
+    rps?: number;
+    util?: number;
+    /** Peak queue depth observed on this component. */
+    queue?: number;
+    /** Capacity headroom as a fraction (1 - util), when capacity exists. */
+    headroom?: number;
+  };
 }
 
 export interface CanvasEdge {
@@ -144,13 +153,17 @@ export function ArchitectureCanvas({
   onConnect,
   onDeleteNode,
   onDeleteEdge,
+  onDuplicateNode,
   onDropService,
   handleRef,
 }: {
   nodes: CanvasNode[];
   edges: CanvasEdge[];
   selected: string | null;
-  metricsByComponent: Map<string, { rps?: number; util?: number }>;
+  metricsByComponent: Map<
+    string,
+    { rps?: number; util?: number; queue?: number; headroom?: number }
+  >;
   faultedByComponent: Set<string>;
   onSelect: (id: string | null) => void;
   onMoveNode: (id: string, x: number, y: number) => void;
@@ -159,6 +172,8 @@ export function ArchitectureCanvas({
   onConnect: (from: string, to: string) => void;
   onDeleteNode: (id: string) => void;
   onDeleteEdge: (index: number) => void;
+  /** Clone a node (context menu "duplicate"). */
+  onDuplicateNode: (id: string) => void;
   /** A palette service was dropped at world coordinates. */
   onDropService: (
     provider: string,
@@ -176,6 +191,13 @@ export function ArchitectureCanvas({
     null,
   );
   const movedRef = useRef(false);
+  // Right-click node menu. Rendered in screen coordinates (not the zoomed
+  // world) so it stays a readable size at any zoom level.
+  const [nodeMenu, setNodeMenu] = useState<{
+    id: string;
+    x: number;
+    y: number;
+  } | null>(null);
   // True between a node/port pointerdown and the click that follows it,
   // so the viewport's deselect-on-click never fires for node clicks.
   const nodeClickRef = useRef(false);
@@ -519,6 +541,7 @@ export function ArchitectureCanvas({
           if (!p) return null;
           const m = metricsByComponent.get(n.id);
           const faulted = faultedByComponent.has(n.id);
+          const severity = n.severity;
           const isTarget =
             connectFrom !== null &&
             n.id !== connectFrom &&
@@ -533,6 +556,7 @@ export function ArchitectureCanvas({
                 dragNode === n.id ? "dragging" : "",
                 faulted ? "faulted" : "",
                 isTarget ? "connect-target" : "",
+                severity ? `sev-${severity}` : "",
               ]
                 .filter(Boolean)
                 .join(" ")}
@@ -543,12 +567,36 @@ export function ArchitectureCanvas({
                 onSelect(n.id);
                 startNodeDrag(e, n.id);
               }}
-              onDoubleClick={() => onDeleteNode(n.id)}
-              title="drag to move · double-click to delete"
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onSelect(n.id);
+                setNodeMenu({ id: n.id, x: e.clientX, y: e.clientY });
+              }}
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                // Double-click opens the context menu (single click selects);
+                // deletion stays explicit so a stray click can't drop a node.
+                onSelect(n.id);
+                setNodeMenu({ id: n.id, x: e.clientX, y: e.clientY });
+              }}
+              title="drag to move · right-click for actions"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="canvas-node-top">
                 <span className="canvas-node-id">{n.id}</span>
+                {severity && (
+                  <span
+                    className={`canvas-node-sev sev-${severity}`}
+                    title={`diagnosis severity: ${severity}`}
+                  >
+                    {severity === "critical"
+                      ? "CRIT"
+                      : severity === "high"
+                        ? "HIGH"
+                        : "MOD"}
+                  </span>
+                )}
                 <span className="canvas-node-tag">
                   {ROLE_TAG[n.role] ?? "··"}
                 </span>
@@ -565,6 +613,24 @@ export function ArchitectureCanvas({
                 >
                   {m?.util !== undefined ? `${Math.round(m.util * 100)}%` : "— %"}
                 </span>
+                {m?.queue !== undefined && m.queue > 0 && (
+                  <span
+                    className="canvas-node-metric queue"
+                    title="peak queue depth observed"
+                  >
+                    q{m.queue}
+                  </span>
+                )}
+                {m?.headroom !== undefined && (
+                  <span
+                    className={`canvas-node-metric${
+                      m.headroom <= 0.1 ? " hot" : ""
+                    }`}
+                    title="capacity headroom"
+                  >
+                    hd {Math.round(m.headroom * 100)}%
+                  </span>
+                )}
               </div>
               <button
                 type="button"
@@ -580,6 +646,55 @@ export function ArchitectureCanvas({
           );
         })}
       </div>
+
+      {nodeMenu && (
+        <>
+          {/* Click-away backdrop: any pointerdown dismisses the menu. */}
+          <div
+            className="ctx-backdrop"
+            onPointerDown={() => setNodeMenu(null)}
+          />
+          <div
+            className="ctx-menu"
+            style={{
+              left: Math.min(nodeMenu.x, window.innerWidth - 180),
+              top: Math.min(nodeMenu.y, window.innerHeight - 140),
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            <div className="ctx-title">{nodeMenu.id}</div>
+            <button
+              type="button"
+              onClick={() => {
+                onSelect(nodeMenu.id);
+                setNodeMenu(null);
+              }}
+            >
+              configure
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onDuplicateNode(nodeMenu.id);
+                setNodeMenu(null);
+              }}
+            >
+              duplicate
+            </button>
+            <button
+              type="button"
+              className="danger"
+              onClick={() => {
+                onDeleteNode(nodeMenu.id);
+                setNodeMenu(null);
+              }}
+            >
+              delete
+            </button>
+          </div>
+        </>
+      )}
 
       <div
         className="canvas-controls"

@@ -64,6 +64,7 @@ export type EditAction =
   | { type: "patchComponent"; id: string; patch: ComponentPatch }
   | { type: "renameComponent"; from: string; to: string }
   | { type: "deleteComponent"; id: string }
+  | { type: "duplicateComponent"; id: string }
   | { type: "moveNode"; id: string; x: number; y: number }
   | { type: "resetLayout" }
   | { type: "connect"; from: string; to: string }
@@ -196,6 +197,25 @@ export function editorReducer(s: EditorState, a: EditAction): EditorState {
         architecture: { ...s.architecture, components, links },
         failures,
         selected: s.selected === a.id ? null : s.selected,
+      };
+    }
+
+    case "duplicateComponent": {
+      const src = s.architecture.components.find((c) => c.id === a.id);
+      if (!src) return s;
+      const id = freshId(s.architecture.components, `${src.id}-copy`);
+      const comp = create(ComponentSpecSchema, { ...src, id });
+      const from = s.positions[src.id];
+      return {
+        ...s,
+        architecture: {
+          ...s.architecture,
+          components: [...s.architecture.components, comp],
+        },
+        positions: from
+          ? { ...s.positions, [id]: { x: from.x + 32, y: from.y + 32 } }
+          : s.positions,
+        selected: id,
       };
     }
 

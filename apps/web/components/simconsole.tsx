@@ -163,6 +163,23 @@ function QueueBar({ id, depth }: { id: string; depth: number }) {
 
 /* ------------------------------------------------------------- console --- */
 
+/**
+ * Imperative run control for keyboard shortcuts and the command palette
+ * owned by the page. The console stays the only code that talks to the
+ * backend; the handle only presses the same buttons the UI exposes.
+ */
+export interface SimConsoleHandles {
+  run: () => void;
+  stop: () => void;
+  pause: () => void;
+  resume: () => void;
+  /** Pause when running, resume when paused; no-op otherwise. */
+  togglePause: () => void;
+  reset: () => void;
+  /** True while a run is in flight (running/paused/stopping). */
+  isBusy: () => boolean;
+}
+
 export function SimConsole({
   architecture,
   workload,
@@ -172,6 +189,7 @@ export function SimConsole({
   onRunningChange,
   onOutcome,
   onSimId,
+  handleRef,
 }: {
   /** Current editor architecture (canonical state lives in the page). */
   architecture: Architecture;
@@ -184,6 +202,8 @@ export function SimConsole({
   onOutcome: (outcome: SimOutcome) => void;
   /** Reports the backend-assigned simulation id once creation succeeds. */
   onSimId?: (id: string | null) => void;
+  /** Optional imperative handle published after every render. */
+  handleRef?: { current: SimConsoleHandles | null };
 }) {
   // Display status starts as a mirror of `running`; it is then driven by
   // real control/status frames from the stream.
@@ -414,6 +434,26 @@ export function SimConsole({
   }, [applyStatus, onRunningChange, onSimId]);
 
   /* ----------------------------------------------------- derived views -- */
+
+  // Publish the imperative handle after every render so closures stay
+  // fresh (same pattern the canvas uses for fit/reset).
+  useEffect(() => {
+    if (!handleRef) return;
+    handleRef.current = {
+      run: () => {
+        if (!busy) void start();
+      },
+      stop: () => void stop(),
+      pause: () => void pause(),
+      resume: () => void resume(),
+      togglePause: () => {
+        if (canPause) void pause();
+        else if (canResume) void resume();
+      },
+      reset,
+      isBusy: () => busy,
+    };
+  });
 
   const completedPoints = useMemo(
     () => history.map((s) => Number(s.completed)),
