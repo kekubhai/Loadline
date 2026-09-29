@@ -29,6 +29,7 @@ import {
 } from "../app/comparison";
 import type { SavedArchitecture } from "../app/comparison";
 import { f0, f1, f2, pct, price } from "./format";
+import { ComparisonBars, comparisonSeries } from "./charts";
 import {
   Badge,
   Button,
@@ -277,6 +278,18 @@ export function ComparisonView({
               peak RPS is the shared workload&apos;s offered peak; every other
               value is that architecture&apos;s measured result. A failed
               architecture shows its validation error instead of numbers.
+            </p>
+          </Panel>
+
+          <Panel
+            title="Side by side"
+            tag="same numbers, drawn · each metric scaled to its own largest value"
+          >
+            <ComparisonBars series={comparisonSeries(entries)} />
+            <p className="prose prose-dim">
+              bar length is relative within a metric only — metrics never share
+              an axis, and an architecture with no value for a metric shows a
+              dash instead of an empty bar.
             </p>
           </Panel>
 

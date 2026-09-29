@@ -708,6 +708,19 @@
   }
 }
 
+/* Post-run charts: four scaled views in a two-column grid. */
+.sim-charts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+@media (min-width: 900px) {
+  .sim-charts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* Run inputs sit below the analysis: configure → run → read. */
 .sim-inputs {
   display: grid;
@@ -1137,4 +1150,121 @@
 .fail-summary {
   display: flex;
   flex-direction: column;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Usability: server banner, validation issues, onboarding steps.           */
+/* ------------------------------------------------------------------------ */
+
+.banner {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 8px 12px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.banner-bad {
+  border-color: var(--bad);
+  background: var(--bad-bg);
+}
+
+.banner code {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 0 3px;
+}
+
+.banner-mark {
+  font-family: var(--mono);
+  font-weight: 700;
+  color: var(--bad);
+}
+
+/* Validation issues are shown where the run button is disabled, so the
+   user never hits a disabled control with no explanation. */
+.issues {
+  margin: 8px 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--warn);
+  background: var(--warn-bg);
+}
+
+.issues-head {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--warn);
+  margin-bottom: 3px;
+}
+
+.issues-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.issues-list li {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+/* First-run guidance in the simulation view. */
+.steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.steps li {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.steps b {
+  color: var(--ink);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+}
+
+/* Click-to-add button on catalog rows (drag still works). */
+.pal-add {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  cursor: pointer;
+  flex: none;
+}
+
+.pal-add:hover {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+.pal-row.selected .pal-add {
+  background: transparent;
+  border-color: var(--paper);
+  color: var(--paper);
+}
+
+.pal-note-bad {
+  color: var(--bad);
 }

@@ -20,6 +20,7 @@ export function Palette({
   components,
   selected,
   onSelect,
+  onAddService,
   onDeleteComponent,
 }: {
   catalog: CatalogService[] | null;
@@ -27,6 +28,8 @@ export function Palette({
   components: ComponentSpec[];
   selected: string | null;
   onSelect: (id: string) => void;
+  /** Add a catalog service to the canvas (click-to-add path). */
+  onAddService: (provider: string, service: string) => void;
   onDeleteComponent: (id: string) => void;
 }) {
   const byProvider = useMemo(() => {
@@ -75,17 +78,24 @@ export function Palette({
       )}
 
       <div className="pal-head">Services</div>
+      {catalogError ? (
+        <div className="pal-note pal-note-bad">
+          catalog unavailable — the simulation server at the configured URL
+          did not answer
+        </div>
+      ) : null}
       {catalog && shown && (
         <div className="pal-services">
           {(byProvider.get(shown) ?? []).map((s) => {
             const id = `catalog:${s.provider}:${s.service}`;
+            const add = () => onAddService(s.provider, s.service);
             return (
               <div
                 key={id}
                 className={`pal-row pal-draggable${
                   selected === id ? " selected" : ""
                 }`}
-                title={`${s.provider}/${s.service} — drag onto the canvas`}
+                title={`${s.provider}/${s.service} — drag onto the canvas, or click + to add`}
                 draggable
                 onDragStart={(e) => {
                   e.dataTransfer.setData(
@@ -95,15 +105,26 @@ export function Palette({
                   e.dataTransfer.effectAllowed = "copy";
                 }}
                 onClick={() => onSelect(id)}
+                onDoubleClick={add}
               >
                 <span className="pal-name">{s.service}</span>
                 <span className="pal-right">{kindLabel(s.componentKind)}</span>
+                <button
+                  type="button"
+                  className="pal-add"
+                  title={`add ${s.service} to the canvas`}
+                  aria-label={`add ${s.service}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    add();
+                  }}
+                >
+                  +
+                </button>
               </div>
             );
           })}
-          {providers.length > 1 && (
-            <div className="pal-note">drag a service onto the canvas to add it</div>
-          )}
+          <div className="pal-note">drag a service onto the canvas, or press +</div>
         </div>
       )}
 

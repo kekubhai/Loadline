@@ -382,3 +382,213 @@
 tr.cmp-selected td {
   background: rgba(0, 0, 0, 0.03);
 }
+
+
+/* ------------------------------------------------------------------------ */
+/* Charts — scaled views of simulator numbers. Bars never invent data: the   */
+/* scale comes from the largest value in the row (or the timeout budget), and*/
+/* missing models render as text instead of a bar.                           */
+/* ------------------------------------------------------------------------ */
+
+.chart {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.chart-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.chart-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.chart-caption {
+  font-size: 10px;
+  color: var(--ink-faint);
+  text-align: right;
+}
+
+.chart-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 18px;
+}
+
+.chart-label {
+  font-size: 11px;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chart-track {
+  position: relative;
+  display: block;
+  height: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.chart-track-stack {
+  overflow: visible;
+  display: flex;
+}
+
+.chart-fill,
+.chart-seg {
+  display: block;
+  height: 100%;
+  background: var(--ink-ghost);
+}
+
+.chart-ok {
+  background: var(--ok);
+}
+
+.chart-warn {
+  background: var(--warn);
+}
+
+.chart-bad {
+  background: var(--bad);
+}
+
+.chart-neutral {
+  background: var(--ink-ghost);
+}
+
+/* Reference tick: capacity ceiling, timeout budget. */
+.chart-tick {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 0;
+  border-left: 1px dashed var(--ink);
+  pointer-events: none;
+}
+
+.chart-value {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.chart-note {
+  font-size: 10px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.chart-flag {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.chart-flag-bad {
+  color: var(--bad);
+  font-weight: 700;
+}
+
+.chart-foot {
+  margin: 4px 0 0;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--ink-faint);
+}
+
+/* Vertical histogram (failure timeline). */
+.chart-cols {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 84px;
+  padding-top: 4px;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.chart-col-cell {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+  min-width: 0;
+}
+
+.chart-col {
+  display: block;
+  width: 100%;
+  background: var(--panel-2);
+  border-top: 1px solid var(--line);
+}
+
+.chart-col-hot {
+  background: var(--bad);
+  border-top-color: var(--bad);
+}
+
+.chart-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--ink-soft);
+}
+
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.chart-swatch {
+  width: 8px;
+  height: 8px;
+  display: inline-block;
+  background: var(--bad);
+}
+
+/* Comparison groups: one heading, one bar per architecture. */
+.chart-group {
+  padding: 5px 0;
+  border-bottom: 1px dotted var(--line);
+}
+
+.chart-group:last-child {
+  border-bottom: none;
+}
+
+.chart-group-head {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 2px;
+}

@@ -50,6 +50,12 @@ import {
   CostPanel,
   HealthPanel,
 } from "../components/analysis";
+import {
+  FailureTimeline,
+  LatencyProfile,
+  LoadVsCapacity,
+  OutcomeMix,
+} from "../components/charts";
 import { f0, f1, f2, pct } from "../components/format";
 import {
   Badge,
@@ -355,6 +361,18 @@ export default function Home() {
         </div>
       </header>
 
+      {catalogError && (
+        <div className="banner banner-bad" role="status">
+          <span className="banner-mark">!</span>
+          <span>
+            cannot reach the simulation server at <code>{serverUrl}</code> — start
+            it with <code>go run ./cmd/loadline-server</code> from
+            <code> apps/simulator</code>, or correct the server URL in the
+            simulation tab. The catalog and every run depend on it.
+          </span>
+        </div>
+      )}
+
       {view === "architecture" ? (
         <div className="workbench">
           {/* --------------------------------------------------- left rail */}
@@ -365,6 +383,7 @@ export default function Home() {
               components={editor.architecture.components}
               selected={editor.selected}
               onSelect={onSelect}
+              onAddService={onAddService}
               onDeleteComponent={onDeleteComponent}
             />
             <div className="pal-head">Canvas</div>
@@ -421,9 +440,17 @@ export default function Home() {
             />
             {state.error && <p className="error-line">error: {state.error}</p>}
             {warnings.length > 0 && (
-              <p className="error-line">
-                {warnings.length} validation issue(s) — see the inspector
-              </p>
+              <div className="issues" role="alert">
+                <div className="issues-head">
+                  {warnings.length} issue{warnings.length === 1 ? "" : "s"} to fix
+                  before this architecture can run
+                </div>
+                <ul className="issues-list">
+                  {warnings.map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
+              </div>
             )}
           </section>
 
@@ -560,6 +587,31 @@ export default function Home() {
                 </Panel>
               </div>
 
+              {/* Charts: scaled views of the same backend numbers. */}
+              <div className="sim-charts">
+                <Panel
+                  title="Latency profile"
+                  tag="percentiles vs the run's timeout budget"
+                >
+                  <LatencyProfile metrics={m} budgetMs={editor.options.timeoutMs} />
+                </Panel>
+
+                <Panel title="Load vs capacity" tag="arrival rps against modeled ceilings">
+                  <LoadVsCapacity components={m.components} />
+                </Panel>
+
+                <Panel title="Outcomes" tag="per component · arrived split by termination">
+                  <OutcomeMix components={m.components} />
+                </Panel>
+
+                <Panel title="Failure timeline" tag="request-level records from the simulator">
+                  <FailureTimeline
+                    failures={state.results?.failures ?? []}
+                    durationMs={m.durationMs}
+                  />
+                </Panel>
+              </div>
+
               <div className="sim-columns">
                 <Panel title="Components">
                 <table>
@@ -617,6 +669,36 @@ export default function Home() {
               </Panel>
               </div>
             </div>
+          )}
+
+          {!state.results && !pageRun.active && (
+            <Panel
+              title="No run yet"
+              tag="the console executes what the architecture view defines"
+            >
+              <ol className="steps">
+                <li>
+                  <b>build</b> — drag services from the palette onto the canvas,
+                  then drag from a node&apos;s dot to connect them.
+                </li>
+                <li>
+                  <b>configure</b> — set the workload (users → peak rps) and the
+                  options below; the inspector edits whatever is selected.
+                </li>
+                <li>
+                  <b>run</b> — press <b>run</b> in the console: progress streams
+                  live from the engine and never affects the results.
+                </li>
+                <li>
+                  <b>read</b> — bottleneck, latency profile, capacity headroom,
+                  and estimated monthly cost are simulator output, not guesses.
+                </li>
+                <li>
+                  <b>break it</b> — inject a failure above and re-run to watch
+                  the cascade, then compare architectures side by side.
+                </li>
+              </ol>
+            </Panel>
           )}
 
           <div className="sim-inputs">
