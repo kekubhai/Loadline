@@ -17,10 +17,13 @@ type CapacityReport struct {
 
 	// CurrentRPS: measured mean arrival rate during the simulation.
 	CurrentRPS float64
-	// MaxSustainableRPS: the modeled ceiling for the CURRENT configuration.
-	// Derived from the actual simulated behavior: concurrency × window /
-	// total busy time, i.e. how much load this configuration could carry at
-	// its measured efficiency. Never a hardcoded constant.
+	// MaxSustainableRPS: the MODELED ceiling for the CURRENT configuration —
+	// an estimate from the service model (concurrency ÷ effective service
+	// time, or the catalog ceiling for serverless kinds), NOT a measured
+	// quantity and NOT a guaranteed production limit. It assumes the
+	// configuration's service time holds at every load level; real systems
+	// usually degrade earlier (contention, GC, hot keys, connection pools).
+	// See docs/simulation-model.md → Capacity model.
 	MaxSustainableRPS float64
 	// Utilization: measured busy fraction of the configured capacity.
 	Utilization float64

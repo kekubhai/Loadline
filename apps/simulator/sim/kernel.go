@@ -2,6 +2,7 @@ package sim
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
@@ -41,6 +42,7 @@ type Request struct {
 	EndMS   float64 // simulated ms when it completed or was rejected
 
 	QueueEnterMS float64 // when it joined the current component's queue
+	Queued       bool    // true while the request is waiting in a queue
 	CacheHit     bool
 
 	// Attempt is 1 on the first try; retries increment it.
@@ -587,6 +589,7 @@ func (k *Kernel) dispatch(ctx *engine.Context, compID string, r *Request) {
 	}
 
 	r.QueueEnterMS = nowMillis(ctx)
+	r.Queued = true
 	rt.queue = append(rt.queue, r)
 	if len(rt.queue) > rt.MaxQueueDepth {
 		rt.MaxQueueDepth = len(rt.queue)
@@ -609,7 +612,7 @@ func (k *Kernel) beginService(ctx *engine.Context, compID string, r *Request) {
 	rt := k.rt(compID)
 	rt.inFlight++
 
-	if r.QueueEnterMS > 0 {
+	if r.Queued {
 		wait := nowMillis(ctx) - r.QueueEnterMS
 		if wait < 0 {
 			wait = 0
@@ -617,6 +620,7 @@ func (k *Kernel) beginService(ctx *engine.Context, compID string, r *Request) {
 		rt.WaitSumMS += wait
 		rt.WaitCount++
 		r.QueueEnterMS = 0
+		r.Queued = false
 	}
 
 	serviceMS := rt.spec.ServiceTime(opFor(rt.spec, r))
@@ -727,6 +731,11 @@ func (k *Kernel) hop(ctx *engine.Context, fromID string, r *Request) bool {
 		clone := *r // fan-out: independent legs, same logical request
 		clone.Prev = fromID
 		clone.Path = append([]string(nil), r.Path...)
+		// Each leg is an independent unit of work in the system: it
+		// occupies slots, queues, and terminates on its own, so it must
+		// be counted in Generated too. Without this, Completed could
+		// exceed Generated and the InFlight derivation would underflow.
+		k.generated++
 		k.dispatch(ctx, t, &clone)
 	}
 	return false
@@ -953,13 +962,16 @@ func (k *Kernel) queueTrend(id string) string {
 	}
 }
 
-// nearestRank returns the nearest-rank percentile of a sorted slice.
+// nearestRank returns the nearest-rank percentile of a sorted slice:
+// the value at rank ceil(p×n) (1-indexed). The tiny epsilon absorbs
+// binary-float noise — e.g. 0.05×20 evaluates to 1.0000000000000002,
+// which would otherwise ceil to rank 2 — so exact ranks stay exact.
 func nearestRank(sorted []float64, p float64) float64 {
 	n := len(sorted)
 	if n == 0 {
 		return 0
 	}
-	rank := int(p*float64(n) + 0.5)
+	rank := int(math.Ceil(p*float64(n) - 1e-9))
 	if rank < 1 {
 		rank = 1
 	}

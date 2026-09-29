@@ -113,6 +113,16 @@ func (c ComponentSpec) validate() error {
 	if c.HitRatio < 0 || c.HitRatio > 1 {
 		return fmt.Errorf("component %s: HitRatio must be in [0,1], got %f", c.ID, c.HitRatio)
 	}
+	// Negative service times would schedule completions in the past — a
+	// model error, not a runtime surprise: reject before any event exists.
+	if c.DefaultServiceTimeMillis < 0 {
+		return fmt.Errorf("component %s: DefaultServiceTimeMillis cannot be negative, got %f", c.ID, c.DefaultServiceTimeMillis)
+	}
+	for op, ms := range c.ServiceTimeMillis {
+		if ms < 0 {
+			return fmt.Errorf("component %s: service time for op %q cannot be negative, got %f", c.ID, op, ms)
+		}
+	}
 	return nil
 }
 

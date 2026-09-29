@@ -226,10 +226,17 @@ func EstimateCost(res *sim.RunResult, specs []ResolvedSpec, plan workload.Plan) 
 	// Free-tier deductions (documented, applied to categories globally).
 	applyFreeTier(est, specs)
 
-	// Recompute total from categories after deductions.
+	// Recompute totals after deductions so every roll-up agrees:
+	// component.Monthly, ByCategory, and Total all reflect the deducted
+	// line items (before this, components kept pre-deduction sums).
 	est.Total = 0
-	for _, cat := range allCategories {
-		est.Total += est.ByCategory[cat]
+	for i := range est.Components {
+		cc := &est.Components[i]
+		cc.Monthly = 0
+		for _, li := range cc.LineItems {
+			cc.Monthly += li.MonthlyCost
+		}
+		est.Total += cc.Monthly
 	}
 
 	// Deterministic component order.
