@@ -1032,7 +1032,238 @@ cd apps/web && pnpm typecheck && pnpm build     # both clean
 
 ### Next Step
 
-Step 8 — Architecture Comparison and Sharing
+Step 8 — Simulation Correctness & Trust ✅ (see below)
+
+---
+
+## Step 8 — Simulation Correctness & Trust
+Status: COMPLETE
+
+### What Was Audited and Fixed
+
+An end-to-end audit of the simulation engine and calculations, followed
+by fixes for every defect found. New documentation:
+`docs/simulation-model.md` — the full model spec (event loop, workload
+formulas, component behavior, queue/latency/failure models, metric
+definitions, diagnosis thresholds, capacity math, cost assumptions,
+known limitations).
+
+**Bugs found and fixed:**
+
+1. **Percentile math was round-half-up, not nearest-rank** (`sim/kernel.go
+   nearestRank`). The documented definition is rank `ceil(p×n)`; the code
+   used `int(p*n+0.5)`, which ranks p95 of 39 samples at 37 instead of 38.
+   Fixed to `ceil(p×n − 1e-9)` (the epsilon absorbs the binary-float edge
+   where 0.05×20 = 1.0000000000000002 would ceil to rank 2). Locked by an
+   adversarial-sample-count test.
+2. **Fan-out broke request conservation** (`sim/kernel.go hop`). Requests
+   fanning out across multiple links (e.g. an LB to two databases)
+   dispatched cloned legs without counting them in Generated, so
+   Completed could exceed Generated and InFlight (a uint64 subtraction)
+   could underflow astronomically. Each leg is now counted; regression
+   test with a real fan-out architecture.
+3. **Negative service times were accepted** (`sim/component.go validate`):
+   a spec with `DefaultServiceTimeMillis: -2` (or a negative per-op
+   entry) scheduled completions in the past — a runtime panic instead of
+   a validation error. Both surfaces are now rejected up front.
+4. **Cost roll-ups disagreed after free-tier deductions**
+   (`providers/cost.go`): deductions mutated line items and category
+   totals but `ComponentCost.Monthly` kept pre-deduction sums, so
+   Σ(components) ≠ Total. All three roll-ups are now recomputed after
+   deductions.
+5. **Capacity docstring lied about derivation** (`providers/capacity.go`):
+   `MaxSustainableRPS` claimed to derive from measured busy time; it is
+   the modeled `concurrency ÷ service time` ceiling (or catalog ceiling
+   for serverless). Doc corrected to say what the code does — a modeled
+   estimate, not a measured quantity or a production guarantee.
+6. **Queue-wait sentinel missed t=0 enqueues** (`sim/kernel.go
+   beginService`): the "was queued" test was `QueueEnterMS > 0`, so a
+   request enqueued at exactly simulated t=0 had its wait dropped.
+   Replaced with an explicit `Queued` flag; regression test across
+   seeds.
+7. A misleading assertion message in the determinism test (claimed "want
+   41.0" for a value that is correctly 37.2) corrected.
+
+**Test-fixture corrections during the audit (the model was right, my
+first scenarios were wrong):** pinned-queue-limits report `stable` not
+`growing` (a queue pinned at its limit is not growing); 2315 RPS against
+an 800 RPS ceiling is correctly diagnosed `critical`; a failure longer
+than its Options.DurationMS window blends the measured service average
+exactly as the window math predicts; `KindQueue` is a zero-delay
+pass-through — FIFO buffering lives at the constrained component
+downstream (documented in §5 of the model doc).
+
+### New Tests (Step 8)
+
+`sim/audit_test.go` — 30 tests, all fixed-seed:
+
+- workload: rounding (2.5 req/day stays fractional), nine zero/invalid
+  rejections, extreme-value overflow guard, read/write fraction tables,
+  payload passthrough, peak-multiplier scaling with average invariance
+- queue: growth under sustained mild overload (trend + depth + wait),
+  drain under light load, rejection exactly at the configured limit
+  (max depth = limit, conservation), unbounded queues never reject
+- capacity: concurrency slots respected (throughput ≤ slots ÷ service),
+  measured service matches spec, per-op service times (1ms read vs 20ms
+  write on the same seed), CapacityRPS is a saturation flag only
+- latency: exact cross-hop composition (3ms + 5ms ⇒ p50 ≈ 8ms), queue
+  wait shows in the tail (p99 ≫ 2× service under overload), percentiles
+  from actual observations with sample-size floor
+- failures: target scoping (unrelated component's measured service
+  unchanged, same seed), window boundaries (no failures before start or
+  after end), finite duration (recovery restores service time), the
+  full cache-crash cascade asserted link-by-link from measured numbers
+  (load ↑ → saturation → rejections → queue at limit → p95 ↑ →
+  diagnosis names db with evidence), worker-queue saturation cascade
+- diagnosis: evidence strings must carry numbers, must cite RPS, and
+  may not hedge ("may" fails); severity matches offered load
+- edge cases: near-zero traffic (honest zeros, no NaN), 1.16M-RPS flood
+  (conservation + bounded shedding + some completions), zero-concurrency
+  pass-through composition, missing dependency, disconnected component,
+  circular architecture, seven invalid-config rejections, extremely long
+  queues (thousands deep, conservation), failure at t=0, failure ending
+  exactly at the horizon
+- regressions: fan-out conservation, t=0 queue wait, nearest-rank
+  definition on adversarial counts
+
+### Final Counts
+
+- Go: **139 tests** (engine 24, workload 8, sim 70, providers 12,
+  loadlinev1 25), all passing; `go vet` clean, `gofmt` clean
+- `docs/simulation-model.md` written (12 sections)
+
+### Known Limitations
+
+See `docs/simulation-model.md` §12: constant service times, probabilistic
+cache without key space/TTL, sustained-peak traffic shape, per-request
+(not per-hop) latency attribution, unthrottled retry amplification,
+no persistence, linear cost scaling from the simulated window, modeled
+(not guaranteed) capacity ceilings.
+
+### Next Step
+
+Step 9 — Architecture Comparison ✅ (see below)
+
+---
+
+## Step 9 — Architecture Comparison
+Status: COMPLETE
+
+### What Was Built
+
+The comparison workflow: ONE workload, two or more architectures, each
+simulated independently with the same seed and options — so metric
+differences come from the architecture and nothing else. There is
+deliberately NO overall score, NO ranking, and NO recommendation
+anywhere: the response and UI present factual differences only.
+
+**Backend** (`proto/loadline/v1/simulation.proto` +
+`apps/simulator/loadlinev1/comparison.go`):
+
+- `RunComparison(workload, architectures[], options)` — the comparison
+  request model. Shared workload/options/seed are echoed back
+  (effective seed included, 0 → 1, mirroring solo runs).
+- Each architecture resolves, validates, and simulates independently
+  (`sim.Simulate` per entry, concurrent goroutines, results written to
+  distinct slots — no shared mutable state). Every entry carries the
+  full solo-run result set: plan, system metrics, failure records,
+  engine summary, diagnosis, capacity reports, and cost estimate.
+- **Isolation guarantees:** the shared failure scenario is validated
+  against EVERY architecture up front (a target missing anywhere rejects
+  the comparison rather than silently skewing it); a structurally
+  invalid architecture fails as a per-entry error while healthy entries
+  still return; duplicate names, < 2 architectures, > 8, missing or
+  invalid workload are request-level rejections.
+- Entries keep request order — never merit order.
+- `GetComparison(comparison_id)` re-fetches stored results (in-memory,
+  mirroring the run store).
+- `buf lint` clean; Go + TS stubs regenerated through the standard
+  pipeline.
+
+**Frontend** (`apps/web/app/comparison.ts` +
+`apps/web/components/comparisonview.tsx` + page wiring):
+
+- New "comparison" view in the top nav, using the existing design
+  system (no new visual language, no dashboard flash).
+- Workflow: save the editor's current architecture into a named library
+  (proto-clone snapshots) → select two or more → the shared workload and
+  options are locked from the editor at run time → run → results.
+- The comparison table renders backend values verbatim in fixed metric
+  order: Peak RPS, Throughput, Rejected, Failed, Avg/p50/p95/p99, Error
+  rate, Timeout rate, Max queue depth, Max utilization, worst-component
+  Headroom, Est. monthly cost, and each architecture's primary
+  bottleneck. Failed entries show their error instead of numbers;
+  columns stay aligned.
+- Below the table: **Bottlenecks** (per architecture, with the
+  simulator's machine-computed evidence lists), **Cost assumptions**
+  (per-entry assumption trail plus line items, ESTIMATE-labeled), and
+  **Failure comparison** (when a failure scenario is configured: failed
+  / rejected / timeouts / error rate / p95 / p99 per architecture under
+  the identical scenario).
+- Pure state module (`app/comparison.ts`) is reducer-tested; the row
+  builder is pass-through only (a test asserts no score/rank/best rows
+  can appear).
+
+### Comparison Metrics
+
+Throughput (completed), rejected, failed, avg latency, p50, p95, p99,
+error rate, timeout rate, max queue depth, max utilization, worst
+headroom, primary bottleneck, estimated monthly cost, plus the shared
+workload's peak RPS as the load basis.
+
+### How Failures Are Compared
+
+Configure any failure injection in the editor (the Step 3 four types);
+the comparison applies the identical scenario to every architecture —
+same targets, same start/duration, same parameters, same seed — and the
+failure-comparison table shows each architecture's measured degradation
+side by side. Cross-architecture target mismatches are rejected before
+any run.
+
+### Tests (Step 9)
+
+Backend `loadlinev1/comparison_test.go` (10 tests over the real Connect
+service): same workload produces comparable runs (identical generated
+counts, plan echo matches `workload.Derive`), per-architecture
+isolation (shared-failure skew rejected, naming the offender),
+determinism (identical request twice → identical entries), failure
+scenario degradation per entry, metric differences from capacity
+differences (no-cache vs cached under heavy load: fewer completions,
+higher p95), cost estimates present with assumption trails, invalid
+handling (broken-architecture entry isolation, < 2 architectures,
+missing/invalid workload, unknown provider service, duplicate names),
+no-scores/no-ranking (request order preserved, no aggregation fields),
+store round-trip determinism.
+
+Frontend `app/comparison.test.ts` (12 tests): reducer save/overwrite/
+remove/selection/lifecycle, shared-input snapshotting, row alignment
+(failed entries null their columns), worst-of aggregation for queue/
+utilization/headroom, pass-through contract (no score/rank/best rows),
+bottleneck helper.
+
+### Final Counts
+
+- Go: **149 tests** (139 + 10 comparison), all passing; vet + gofmt
+  clean
+- Frontend: **60 tests** (48 + 12 comparison), all passing;
+  `tsc --noEmit` clean in apps/web and packages/api; `next build` clean
+- `buf lint` clean
+
+### Known Limitations
+
+- Comparisons are synchronous single RPCs (no streaming progress yet);
+  very long horizons × 8 architectures simply take longer.
+- The comparison store is in-memory and per-process, like the run store.
+- Entries simulate independently, so per-architecture load shedding
+  does not feed back into any shared state (by design — isolation).
+- Generic (provider-less) architectures get metrics + diagnosis but no
+  capacity/cost columns (same rule as solo runs).
+- No sharing/persistence of saved architecture libraries yet (page
+  state only).
+
+### Next Step
+
+Step 10 — persistence, sharing, and scenario polish.
 
 ---
 

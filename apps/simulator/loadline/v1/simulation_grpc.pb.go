@@ -32,6 +32,8 @@ const (
 	SimulationService_GetCapacity_FullMethodName         = "/loadline.v1.SimulationService/GetCapacity"
 	SimulationService_GetCostEstimate_FullMethodName     = "/loadline.v1.SimulationService/GetCostEstimate"
 	SimulationService_ListCatalog_FullMethodName         = "/loadline.v1.SimulationService/ListCatalog"
+	SimulationService_RunComparison_FullMethodName       = "/loadline.v1.SimulationService/RunComparison"
+	SimulationService_GetComparison_FullMethodName       = "/loadline.v1.SimulationService/GetComparison"
 )
 
 // SimulationServiceClient is the client API for SimulationService service.
@@ -76,6 +78,13 @@ type SimulationServiceClient interface {
 	GetCostEstimate(ctx context.Context, in *GetCostEstimateRequest, opts ...grpc.CallOption) (*GetCostEstimateResponse, error)
 	// List the built-in provider catalog.
 	ListCatalog(ctx context.Context, in *ListCatalogRequest, opts ...grpc.CallOption) (*ListCatalogResponse, error)
+	// Run an architecture comparison: one shared workload, two or more
+	// architectures, each simulated independently with the same seed and
+	// options. Returns per-architecture metrics, bottlenecks, capacity,
+	// and cost — no scores, no ranking.
+	RunComparison(ctx context.Context, in *RunComparisonRequest, opts ...grpc.CallOption) (*RunComparisonResponse, error)
+	// Fetch a previously run comparison.
+	GetComparison(ctx context.Context, in *GetComparisonRequest, opts ...grpc.CallOption) (*GetComparisonResponse, error)
 }
 
 type simulationServiceClient struct {
@@ -225,6 +234,26 @@ func (c *simulationServiceClient) ListCatalog(ctx context.Context, in *ListCatal
 	return out, nil
 }
 
+func (c *simulationServiceClient) RunComparison(ctx context.Context, in *RunComparisonRequest, opts ...grpc.CallOption) (*RunComparisonResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RunComparisonResponse)
+	err := c.cc.Invoke(ctx, SimulationService_RunComparison_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *simulationServiceClient) GetComparison(ctx context.Context, in *GetComparisonRequest, opts ...grpc.CallOption) (*GetComparisonResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetComparisonResponse)
+	err := c.cc.Invoke(ctx, SimulationService_GetComparison_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SimulationServiceServer is the server API for SimulationService service.
 // All implementations should embed UnimplementedSimulationServiceServer
 // for forward compatibility.
@@ -267,6 +296,13 @@ type SimulationServiceServer interface {
 	GetCostEstimate(context.Context, *GetCostEstimateRequest) (*GetCostEstimateResponse, error)
 	// List the built-in provider catalog.
 	ListCatalog(context.Context, *ListCatalogRequest) (*ListCatalogResponse, error)
+	// Run an architecture comparison: one shared workload, two or more
+	// architectures, each simulated independently with the same seed and
+	// options. Returns per-architecture metrics, bottlenecks, capacity,
+	// and cost — no scores, no ranking.
+	RunComparison(context.Context, *RunComparisonRequest) (*RunComparisonResponse, error)
+	// Fetch a previously run comparison.
+	GetComparison(context.Context, *GetComparisonRequest) (*GetComparisonResponse, error)
 }
 
 // UnimplementedSimulationServiceServer should be embedded to have
@@ -314,6 +350,12 @@ func (UnimplementedSimulationServiceServer) GetCostEstimate(context.Context, *Ge
 }
 func (UnimplementedSimulationServiceServer) ListCatalog(context.Context, *ListCatalogRequest) (*ListCatalogResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListCatalog not implemented")
+}
+func (UnimplementedSimulationServiceServer) RunComparison(context.Context, *RunComparisonRequest) (*RunComparisonResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RunComparison not implemented")
+}
+func (UnimplementedSimulationServiceServer) GetComparison(context.Context, *GetComparisonRequest) (*GetComparisonResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetComparison not implemented")
 }
 func (UnimplementedSimulationServiceServer) testEmbeddedByValue() {}
 
@@ -562,6 +604,42 @@ func _SimulationService_ListCatalog_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SimulationService_RunComparison_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RunComparisonRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SimulationServiceServer).RunComparison(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SimulationService_RunComparison_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SimulationServiceServer).RunComparison(ctx, req.(*RunComparisonRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SimulationService_GetComparison_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetComparisonRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SimulationServiceServer).GetComparison(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SimulationService_GetComparison_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SimulationServiceServer).GetComparison(ctx, req.(*GetComparisonRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SimulationService_ServiceDesc is the grpc.ServiceDesc for SimulationService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -616,6 +694,14 @@ var SimulationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListCatalog",
 			Handler:    _SimulationService_ListCatalog_Handler,
+		},
+		{
+			MethodName: "RunComparison",
+			Handler:    _SimulationService_RunComparison_Handler,
+		},
+		{
+			MethodName: "GetComparison",
+			Handler:    _SimulationService_GetComparison_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

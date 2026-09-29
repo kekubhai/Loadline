@@ -72,6 +72,12 @@ const (
 	// SimulationServiceListCatalogProcedure is the fully-qualified name of the SimulationService's
 	// ListCatalog RPC.
 	SimulationServiceListCatalogProcedure = "/loadline.v1.SimulationService/ListCatalog"
+	// SimulationServiceRunComparisonProcedure is the fully-qualified name of the SimulationService's
+	// RunComparison RPC.
+	SimulationServiceRunComparisonProcedure = "/loadline.v1.SimulationService/RunComparison"
+	// SimulationServiceGetComparisonProcedure is the fully-qualified name of the SimulationService's
+	// GetComparison RPC.
+	SimulationServiceGetComparisonProcedure = "/loadline.v1.SimulationService/GetComparison"
 )
 
 // SimulationServiceClient is a client for the loadline.v1.SimulationService service.
@@ -110,6 +116,13 @@ type SimulationServiceClient interface {
 	GetCostEstimate(context.Context, *connect.Request[v1.GetCostEstimateRequest]) (*connect.Response[v1.GetCostEstimateResponse], error)
 	// List the built-in provider catalog.
 	ListCatalog(context.Context, *connect.Request[v1.ListCatalogRequest]) (*connect.Response[v1.ListCatalogResponse], error)
+	// Run an architecture comparison: one shared workload, two or more
+	// architectures, each simulated independently with the same seed and
+	// options. Returns per-architecture metrics, bottlenecks, capacity,
+	// and cost — no scores, no ranking.
+	RunComparison(context.Context, *connect.Request[v1.RunComparisonRequest]) (*connect.Response[v1.RunComparisonResponse], error)
+	// Fetch a previously run comparison.
+	GetComparison(context.Context, *connect.Request[v1.GetComparisonRequest]) (*connect.Response[v1.GetComparisonResponse], error)
 }
 
 // NewSimulationServiceClient constructs a client for the loadline.v1.SimulationService service. By
@@ -201,6 +214,18 @@ func NewSimulationServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			connect.WithSchema(simulationServiceMethods.ByName("ListCatalog")),
 			connect.WithClientOptions(opts...),
 		),
+		runComparison: connect.NewClient[v1.RunComparisonRequest, v1.RunComparisonResponse](
+			httpClient,
+			baseURL+SimulationServiceRunComparisonProcedure,
+			connect.WithSchema(simulationServiceMethods.ByName("RunComparison")),
+			connect.WithClientOptions(opts...),
+		),
+		getComparison: connect.NewClient[v1.GetComparisonRequest, v1.GetComparisonResponse](
+			httpClient,
+			baseURL+SimulationServiceGetComparisonProcedure,
+			connect.WithSchema(simulationServiceMethods.ByName("GetComparison")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -219,6 +244,8 @@ type simulationServiceClient struct {
 	getCapacity         *connect.Client[v1.GetCapacityRequest, v1.GetCapacityResponse]
 	getCostEstimate     *connect.Client[v1.GetCostEstimateRequest, v1.GetCostEstimateResponse]
 	listCatalog         *connect.Client[v1.ListCatalogRequest, v1.ListCatalogResponse]
+	runComparison       *connect.Client[v1.RunComparisonRequest, v1.RunComparisonResponse]
+	getComparison       *connect.Client[v1.GetComparisonRequest, v1.GetComparisonResponse]
 }
 
 // CreateSimulation calls loadline.v1.SimulationService.CreateSimulation.
@@ -286,6 +313,16 @@ func (c *simulationServiceClient) ListCatalog(ctx context.Context, req *connect.
 	return c.listCatalog.CallUnary(ctx, req)
 }
 
+// RunComparison calls loadline.v1.SimulationService.RunComparison.
+func (c *simulationServiceClient) RunComparison(ctx context.Context, req *connect.Request[v1.RunComparisonRequest]) (*connect.Response[v1.RunComparisonResponse], error) {
+	return c.runComparison.CallUnary(ctx, req)
+}
+
+// GetComparison calls loadline.v1.SimulationService.GetComparison.
+func (c *simulationServiceClient) GetComparison(ctx context.Context, req *connect.Request[v1.GetComparisonRequest]) (*connect.Response[v1.GetComparisonResponse], error) {
+	return c.getComparison.CallUnary(ctx, req)
+}
+
 // SimulationServiceHandler is an implementation of the loadline.v1.SimulationService service.
 type SimulationServiceHandler interface {
 	// Create a stored simulation (architecture + workload + options).
@@ -322,6 +359,13 @@ type SimulationServiceHandler interface {
 	GetCostEstimate(context.Context, *connect.Request[v1.GetCostEstimateRequest]) (*connect.Response[v1.GetCostEstimateResponse], error)
 	// List the built-in provider catalog.
 	ListCatalog(context.Context, *connect.Request[v1.ListCatalogRequest]) (*connect.Response[v1.ListCatalogResponse], error)
+	// Run an architecture comparison: one shared workload, two or more
+	// architectures, each simulated independently with the same seed and
+	// options. Returns per-architecture metrics, bottlenecks, capacity,
+	// and cost — no scores, no ranking.
+	RunComparison(context.Context, *connect.Request[v1.RunComparisonRequest]) (*connect.Response[v1.RunComparisonResponse], error)
+	// Fetch a previously run comparison.
+	GetComparison(context.Context, *connect.Request[v1.GetComparisonRequest]) (*connect.Response[v1.GetComparisonResponse], error)
 }
 
 // NewSimulationServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -409,6 +453,18 @@ func NewSimulationServiceHandler(svc SimulationServiceHandler, opts ...connect.H
 		connect.WithSchema(simulationServiceMethods.ByName("ListCatalog")),
 		connect.WithHandlerOptions(opts...),
 	)
+	simulationServiceRunComparisonHandler := connect.NewUnaryHandler(
+		SimulationServiceRunComparisonProcedure,
+		svc.RunComparison,
+		connect.WithSchema(simulationServiceMethods.ByName("RunComparison")),
+		connect.WithHandlerOptions(opts...),
+	)
+	simulationServiceGetComparisonHandler := connect.NewUnaryHandler(
+		SimulationServiceGetComparisonProcedure,
+		svc.GetComparison,
+		connect.WithSchema(simulationServiceMethods.ByName("GetComparison")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/loadline.v1.SimulationService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SimulationServiceCreateSimulationProcedure:
@@ -437,6 +493,10 @@ func NewSimulationServiceHandler(svc SimulationServiceHandler, opts ...connect.H
 			simulationServiceGetCostEstimateHandler.ServeHTTP(w, r)
 		case SimulationServiceListCatalogProcedure:
 			simulationServiceListCatalogHandler.ServeHTTP(w, r)
+		case SimulationServiceRunComparisonProcedure:
+			simulationServiceRunComparisonHandler.ServeHTTP(w, r)
+		case SimulationServiceGetComparisonProcedure:
+			simulationServiceGetComparisonHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -496,4 +556,12 @@ func (UnimplementedSimulationServiceHandler) GetCostEstimate(context.Context, *c
 
 func (UnimplementedSimulationServiceHandler) ListCatalog(context.Context, *connect.Request[v1.ListCatalogRequest]) (*connect.Response[v1.ListCatalogResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("loadline.v1.SimulationService.ListCatalog is not implemented"))
+}
+
+func (UnimplementedSimulationServiceHandler) RunComparison(context.Context, *connect.Request[v1.RunComparisonRequest]) (*connect.Response[v1.RunComparisonResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("loadline.v1.SimulationService.RunComparison is not implemented"))
+}
+
+func (UnimplementedSimulationServiceHandler) GetComparison(context.Context, *connect.Request[v1.GetComparisonRequest]) (*connect.Response[v1.GetComparisonResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("loadline.v1.SimulationService.GetComparison is not implemented"))
 }

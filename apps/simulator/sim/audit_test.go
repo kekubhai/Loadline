@@ -406,7 +406,7 @@ func TestPerOpServiceTimesRespected(t *testing.T) {
 		Components: []ComponentSpec{
 			client("client"),
 			{ID: "db", Kind: KindDatabase, Concurrency: 8, QueueLimit: 100,
-				ServiceTimeMillis: map[Op]float64{OpRead: 1, OpWrite: 20},
+				ServiceTimeMillis:        map[Op]float64{OpRead: 1, OpWrite: 20},
 				DefaultServiceTimeMillis: 5},
 		},
 		Links: []Link{{From: "client", To: "db"}},

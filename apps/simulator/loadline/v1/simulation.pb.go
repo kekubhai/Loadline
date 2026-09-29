@@ -3821,6 +3821,444 @@ func (x *GetCostEstimateResponse) GetEstimate() *CostEstimate {
 	return nil
 }
 
+// ComparisonArchitectureInput is one architecture in a comparison: the
+// architecture itself plus a display name. The workload, options, and
+// seed are shared across ALL architectures in the comparison — every
+// difference in the results comes from the architecture, nothing else.
+type ComparisonArchitectureInput struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Display name shown in the comparison table (e.g. "aws-web").
+	Name          string        `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Architecture  *Architecture `protobuf:"bytes,2,opt,name=architecture,proto3" json:"architecture,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ComparisonArchitectureInput) Reset() {
+	*x = ComparisonArchitectureInput{}
+	mi := &file_loadline_v1_simulation_proto_msgTypes[48]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ComparisonArchitectureInput) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ComparisonArchitectureInput) ProtoMessage() {}
+
+func (x *ComparisonArchitectureInput) ProtoReflect() protoreflect.Message {
+	mi := &file_loadline_v1_simulation_proto_msgTypes[48]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ComparisonArchitectureInput.ProtoReflect.Descriptor instead.
+func (*ComparisonArchitectureInput) Descriptor() ([]byte, []int) {
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *ComparisonArchitectureInput) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ComparisonArchitectureInput) GetArchitecture() *Architecture {
+	if x != nil {
+		return x.Architecture
+	}
+	return nil
+}
+
+// RunComparisonRequest is the comparison model: ONE workload, TWO OR
+// MORE architectures, ONE shared options/seed. Each architecture is
+// simulated independently; identical inputs guarantee identical arrivals
+// so metrics are directly comparable.
+type RunComparisonRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The single workload every architecture receives. Required.
+	Workload *WorkloadSpec `protobuf:"bytes,1,opt,name=workload,proto3" json:"workload,omitempty"`
+	// Two or more architectures. Fewer than two is rejected.
+	Architectures []*ComparisonArchitectureInput `protobuf:"bytes,2,rep,name=architectures,proto3" json:"architectures,omitempty"`
+	// Shared simulation configuration: seed, duration, retries, timeouts.
+	// Failure injections here are the SHARED failure scenario applied to
+	// every architecture (targets must exist in each architecture).
+	Options       *SimulationOptions `protobuf:"bytes,3,opt,name=options,proto3" json:"options,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RunComparisonRequest) Reset() {
+	*x = RunComparisonRequest{}
+	mi := &file_loadline_v1_simulation_proto_msgTypes[49]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RunComparisonRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RunComparisonRequest) ProtoMessage() {}
+
+func (x *RunComparisonRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_loadline_v1_simulation_proto_msgTypes[49]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RunComparisonRequest.ProtoReflect.Descriptor instead.
+func (*RunComparisonRequest) Descriptor() ([]byte, []int) {
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *RunComparisonRequest) GetWorkload() *WorkloadSpec {
+	if x != nil {
+		return x.Workload
+	}
+	return nil
+}
+
+func (x *RunComparisonRequest) GetArchitectures() []*ComparisonArchitectureInput {
+	if x != nil {
+		return x.Architectures
+	}
+	return nil
+}
+
+func (x *RunComparisonRequest) GetOptions() *SimulationOptions {
+	if x != nil {
+		return x.Options
+	}
+	return nil
+}
+
+// ComparisonEntry is one architecture's full result set, exactly what a
+// solo run of that architecture would have produced with the shared
+// workload/options.
+type ComparisonEntry struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// Error text when this architecture failed validation/simulation; the
+	// other fields are absent for failed entries (one bad architecture
+	// never sinks the whole comparison).
+	Error         string            `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	Plan          *LoadPlan         `protobuf:"bytes,3,opt,name=plan,proto3" json:"plan,omitempty"`
+	Metrics       *SystemMetrics    `protobuf:"bytes,4,opt,name=metrics,proto3" json:"metrics,omitempty"`
+	Failures      []*FailureRecord  `protobuf:"bytes,5,rep,name=failures,proto3" json:"failures,omitempty"`
+	Summary       *RunSummary       `protobuf:"bytes,6,opt,name=summary,proto3" json:"summary,omitempty"`
+	Diagnosis     *Diagnosis        `protobuf:"bytes,7,opt,name=diagnosis,proto3" json:"diagnosis,omitempty"`
+	Capacity      []*CapacityReport `protobuf:"bytes,8,rep,name=capacity,proto3" json:"capacity,omitempty"`
+	Cost          *CostEstimate     `protobuf:"bytes,9,opt,name=cost,proto3" json:"cost,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ComparisonEntry) Reset() {
+	*x = ComparisonEntry{}
+	mi := &file_loadline_v1_simulation_proto_msgTypes[50]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ComparisonEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ComparisonEntry) ProtoMessage() {}
+
+func (x *ComparisonEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_loadline_v1_simulation_proto_msgTypes[50]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ComparisonEntry.ProtoReflect.Descriptor instead.
+func (*ComparisonEntry) Descriptor() ([]byte, []int) {
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{50}
+}
+
+func (x *ComparisonEntry) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ComparisonEntry) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *ComparisonEntry) GetPlan() *LoadPlan {
+	if x != nil {
+		return x.Plan
+	}
+	return nil
+}
+
+func (x *ComparisonEntry) GetMetrics() *SystemMetrics {
+	if x != nil {
+		return x.Metrics
+	}
+	return nil
+}
+
+func (x *ComparisonEntry) GetFailures() []*FailureRecord {
+	if x != nil {
+		return x.Failures
+	}
+	return nil
+}
+
+func (x *ComparisonEntry) GetSummary() *RunSummary {
+	if x != nil {
+		return x.Summary
+	}
+	return nil
+}
+
+func (x *ComparisonEntry) GetDiagnosis() *Diagnosis {
+	if x != nil {
+		return x.Diagnosis
+	}
+	return nil
+}
+
+func (x *ComparisonEntry) GetCapacity() []*CapacityReport {
+	if x != nil {
+		return x.Capacity
+	}
+	return nil
+}
+
+func (x *ComparisonEntry) GetCost() *CostEstimate {
+	if x != nil {
+		return x.Cost
+	}
+	return nil
+}
+
+// ComparisonResult carries the per-architecture results. There is
+// deliberately NO score, NO ranking, and NO recommendation field: the
+// user decides which tradeoff matters. Entries keep request order.
+type ComparisonResult struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Echo of the shared workload actually used (after defaulting).
+	Workload *WorkloadSpec `protobuf:"bytes,1,opt,name=workload,proto3" json:"workload,omitempty"`
+	// Effective seed echoed for reproducibility (0 → defaulted to 1).
+	Seed          uint64             `protobuf:"varint,2,opt,name=seed,proto3" json:"seed,omitempty"`
+	Entries       []*ComparisonEntry `protobuf:"bytes,3,rep,name=entries,proto3" json:"entries,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ComparisonResult) Reset() {
+	*x = ComparisonResult{}
+	mi := &file_loadline_v1_simulation_proto_msgTypes[51]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ComparisonResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ComparisonResult) ProtoMessage() {}
+
+func (x *ComparisonResult) ProtoReflect() protoreflect.Message {
+	mi := &file_loadline_v1_simulation_proto_msgTypes[51]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ComparisonResult.ProtoReflect.Descriptor instead.
+func (*ComparisonResult) Descriptor() ([]byte, []int) {
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{51}
+}
+
+func (x *ComparisonResult) GetWorkload() *WorkloadSpec {
+	if x != nil {
+		return x.Workload
+	}
+	return nil
+}
+
+func (x *ComparisonResult) GetSeed() uint64 {
+	if x != nil {
+		return x.Seed
+	}
+	return 0
+}
+
+func (x *ComparisonResult) GetEntries() []*ComparisonEntry {
+	if x != nil {
+		return x.Entries
+	}
+	return nil
+}
+
+type RunComparisonResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Result        *ComparisonResult      `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RunComparisonResponse) Reset() {
+	*x = RunComparisonResponse{}
+	mi := &file_loadline_v1_simulation_proto_msgTypes[52]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RunComparisonResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RunComparisonResponse) ProtoMessage() {}
+
+func (x *RunComparisonResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_loadline_v1_simulation_proto_msgTypes[52]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RunComparisonResponse.ProtoReflect.Descriptor instead.
+func (*RunComparisonResponse) Descriptor() ([]byte, []int) {
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{52}
+}
+
+func (x *RunComparisonResponse) GetResult() *ComparisonResult {
+	if x != nil {
+		return x.Result
+	}
+	return nil
+}
+
+// GetComparisonRequest re-fetches a stored comparison result.
+type GetComparisonRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ComparisonId  string                 `protobuf:"bytes,1,opt,name=comparison_id,json=comparisonId,proto3" json:"comparison_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetComparisonRequest) Reset() {
+	*x = GetComparisonRequest{}
+	mi := &file_loadline_v1_simulation_proto_msgTypes[53]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetComparisonRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetComparisonRequest) ProtoMessage() {}
+
+func (x *GetComparisonRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_loadline_v1_simulation_proto_msgTypes[53]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetComparisonRequest.ProtoReflect.Descriptor instead.
+func (*GetComparisonRequest) Descriptor() ([]byte, []int) {
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{53}
+}
+
+func (x *GetComparisonRequest) GetComparisonId() string {
+	if x != nil {
+		return x.ComparisonId
+	}
+	return ""
+}
+
+type GetComparisonResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Result        *ComparisonResult      `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetComparisonResponse) Reset() {
+	*x = GetComparisonResponse{}
+	mi := &file_loadline_v1_simulation_proto_msgTypes[54]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetComparisonResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetComparisonResponse) ProtoMessage() {}
+
+func (x *GetComparisonResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_loadline_v1_simulation_proto_msgTypes[54]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetComparisonResponse.ProtoReflect.Descriptor instead.
+func (*GetComparisonResponse) Descriptor() ([]byte, []int) {
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{54}
+}
+
+func (x *GetComparisonResponse) GetResult() *ComparisonResult {
+	if x != nil {
+		return x.Result
+	}
+	return nil
+}
+
 // CatalogService describes one provider service model.
 type CatalogService struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
@@ -3841,7 +4279,7 @@ type CatalogService struct {
 
 func (x *CatalogService) Reset() {
 	*x = CatalogService{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[48]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3853,7 +4291,7 @@ func (x *CatalogService) String() string {
 func (*CatalogService) ProtoMessage() {}
 
 func (x *CatalogService) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[48]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3866,7 +4304,7 @@ func (x *CatalogService) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CatalogService.ProtoReflect.Descriptor instead.
 func (*CatalogService) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{48}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *CatalogService) GetProvider() string {
@@ -3955,7 +4393,7 @@ type ListCatalogRequest struct {
 
 func (x *ListCatalogRequest) Reset() {
 	*x = ListCatalogRequest{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[49]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3967,7 +4405,7 @@ func (x *ListCatalogRequest) String() string {
 func (*ListCatalogRequest) ProtoMessage() {}
 
 func (x *ListCatalogRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[49]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3980,7 +4418,7 @@ func (x *ListCatalogRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCatalogRequest.ProtoReflect.Descriptor instead.
 func (*ListCatalogRequest) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{49}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{56}
 }
 
 type ListCatalogResponse struct {
@@ -3992,7 +4430,7 @@ type ListCatalogResponse struct {
 
 func (x *ListCatalogResponse) Reset() {
 	*x = ListCatalogResponse{}
-	mi := &file_loadline_v1_simulation_proto_msgTypes[50]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4004,7 +4442,7 @@ func (x *ListCatalogResponse) String() string {
 func (*ListCatalogResponse) ProtoMessage() {}
 
 func (x *ListCatalogResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_loadline_v1_simulation_proto_msgTypes[50]
+	mi := &file_loadline_v1_simulation_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4017,7 +4455,7 @@ func (x *ListCatalogResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCatalogResponse.ProtoReflect.Descriptor instead.
 func (*ListCatalogResponse) Descriptor() ([]byte, []int) {
-	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{50}
+	return file_loadline_v1_simulation_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *ListCatalogResponse) GetServices() []*CatalogService {
@@ -4348,7 +4786,34 @@ const file_loadline_v1_simulation_proto_rawDesc = "" +
 	"\rsimulation_id\x18\x01 \x01(\tR\fsimulationId\"u\n" +
 	"\x17GetCostEstimateResponse\x12#\n" +
 	"\rsimulation_id\x18\x01 \x01(\tR\fsimulationId\x125\n" +
-	"\bestimate\x18\x02 \x01(\v2\x19.loadline.v1.CostEstimateR\bestimate\"\xa8\x03\n" +
+	"\bestimate\x18\x02 \x01(\v2\x19.loadline.v1.CostEstimateR\bestimate\"p\n" +
+	"\x1bComparisonArchitectureInput\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12=\n" +
+	"\farchitecture\x18\x02 \x01(\v2\x19.loadline.v1.ArchitectureR\farchitecture\"\xd7\x01\n" +
+	"\x14RunComparisonRequest\x125\n" +
+	"\bworkload\x18\x01 \x01(\v2\x19.loadline.v1.WorkloadSpecR\bworkload\x12N\n" +
+	"\rarchitectures\x18\x02 \x03(\v2(.loadline.v1.ComparisonArchitectureInputR\rarchitectures\x128\n" +
+	"\aoptions\x18\x03 \x01(\v2\x1e.loadline.v1.SimulationOptionsR\aoptions\"\xa5\x03\n" +
+	"\x0fComparisonEntry\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\x12)\n" +
+	"\x04plan\x18\x03 \x01(\v2\x15.loadline.v1.LoadPlanR\x04plan\x124\n" +
+	"\ametrics\x18\x04 \x01(\v2\x1a.loadline.v1.SystemMetricsR\ametrics\x126\n" +
+	"\bfailures\x18\x05 \x03(\v2\x1a.loadline.v1.FailureRecordR\bfailures\x121\n" +
+	"\asummary\x18\x06 \x01(\v2\x17.loadline.v1.RunSummaryR\asummary\x124\n" +
+	"\tdiagnosis\x18\a \x01(\v2\x16.loadline.v1.DiagnosisR\tdiagnosis\x127\n" +
+	"\bcapacity\x18\b \x03(\v2\x1b.loadline.v1.CapacityReportR\bcapacity\x12-\n" +
+	"\x04cost\x18\t \x01(\v2\x19.loadline.v1.CostEstimateR\x04cost\"\x95\x01\n" +
+	"\x10ComparisonResult\x125\n" +
+	"\bworkload\x18\x01 \x01(\v2\x19.loadline.v1.WorkloadSpecR\bworkload\x12\x12\n" +
+	"\x04seed\x18\x02 \x01(\x04R\x04seed\x126\n" +
+	"\aentries\x18\x03 \x03(\v2\x1c.loadline.v1.ComparisonEntryR\aentries\"N\n" +
+	"\x15RunComparisonResponse\x125\n" +
+	"\x06result\x18\x01 \x01(\v2\x1d.loadline.v1.ComparisonResultR\x06result\";\n" +
+	"\x14GetComparisonRequest\x12#\n" +
+	"\rcomparison_id\x18\x01 \x01(\tR\fcomparisonId\"N\n" +
+	"\x15GetComparisonResponse\x125\n" +
+	"\x06result\x18\x01 \x01(\v2\x1d.loadline.v1.ComparisonResultR\x06result\"\xa8\x03\n" +
 	"\x0eCatalogService\x12\x1a\n" +
 	"\bprovider\x18\x01 \x01(\tR\bprovider\x12\x18\n" +
 	"\aservice\x18\x02 \x01(\tR\aservice\x12\x18\n" +
@@ -4392,7 +4857,8 @@ const file_loadline_v1_simulation_proto_rawDesc = "" +
 	"\x11RUN_STATUS_FAILED\x10\x04\x12\x15\n" +
 	"\x11RUN_STATUS_PAUSED\x10\x05\x12\x17\n" +
 	"\x13RUN_STATUS_STOPPING\x10\x06\x12\x16\n" +
-	"\x12RUN_STATUS_STOPPED\x10\a2\xae\t\n" +
+	"\x12RUN_STATUS_STOPPED\x10\a2\xde\n" +
+	"\n" +
 	"\x11SimulationService\x12_\n" +
 	"\x10CreateSimulation\x12$.loadline.v1.CreateSimulationRequest\x1a%.loadline.v1.CreateSimulationResponse\x12V\n" +
 	"\rRunSimulation\x12!.loadline.v1.RunSimulationRequest\x1a\".loadline.v1.RunSimulationResponse\x12h\n" +
@@ -4407,7 +4873,9 @@ const file_loadline_v1_simulation_proto_rawDesc = "" +
 	"\fGetDiagnosis\x12 .loadline.v1.GetDiagnosisRequest\x1a!.loadline.v1.GetDiagnosisResponse\x12P\n" +
 	"\vGetCapacity\x12\x1f.loadline.v1.GetCapacityRequest\x1a .loadline.v1.GetCapacityResponse\x12\\\n" +
 	"\x0fGetCostEstimate\x12#.loadline.v1.GetCostEstimateRequest\x1a$.loadline.v1.GetCostEstimateResponse\x12P\n" +
-	"\vListCatalog\x12\x1f.loadline.v1.ListCatalogRequest\x1a .loadline.v1.ListCatalogResponseBDZBgithub.com/kekubhai/Loadline/apps/simulator/loadline/v1;loadlinev1b\x06proto3"
+	"\vListCatalog\x12\x1f.loadline.v1.ListCatalogRequest\x1a .loadline.v1.ListCatalogResponse\x12V\n" +
+	"\rRunComparison\x12!.loadline.v1.RunComparisonRequest\x1a\".loadline.v1.RunComparisonResponse\x12V\n" +
+	"\rGetComparison\x12!.loadline.v1.GetComparisonRequest\x1a\".loadline.v1.GetComparisonResponseBDZBgithub.com/kekubhai/Loadline/apps/simulator/loadline/v1;loadlinev1b\x06proto3"
 
 var (
 	file_loadline_v1_simulation_proto_rawDescOnce sync.Once
@@ -4422,7 +4890,7 @@ func file_loadline_v1_simulation_proto_rawDescGZIP() []byte {
 }
 
 var file_loadline_v1_simulation_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_loadline_v1_simulation_proto_msgTypes = make([]protoimpl.MessageInfo, 53)
+var file_loadline_v1_simulation_proto_msgTypes = make([]protoimpl.MessageInfo, 60)
 var file_loadline_v1_simulation_proto_goTypes = []any{
 	(ComponentKind)(0),                  // 0: loadline.v1.ComponentKind
 	(FailureType)(0),                    // 1: loadline.v1.FailureType
@@ -4475,15 +4943,22 @@ var file_loadline_v1_simulation_proto_goTypes = []any{
 	(*CostEstimate)(nil),                // 48: loadline.v1.CostEstimate
 	(*GetCostEstimateRequest)(nil),      // 49: loadline.v1.GetCostEstimateRequest
 	(*GetCostEstimateResponse)(nil),     // 50: loadline.v1.GetCostEstimateResponse
-	(*CatalogService)(nil),              // 51: loadline.v1.CatalogService
-	(*ListCatalogRequest)(nil),          // 52: loadline.v1.ListCatalogRequest
-	(*ListCatalogResponse)(nil),         // 53: loadline.v1.ListCatalogResponse
-	nil,                                 // 54: loadline.v1.ComponentSpec.ServiceTimeMillisEntry
-	nil,                                 // 55: loadline.v1.CostEstimate.ByCategoryEntry
+	(*ComparisonArchitectureInput)(nil), // 51: loadline.v1.ComparisonArchitectureInput
+	(*RunComparisonRequest)(nil),        // 52: loadline.v1.RunComparisonRequest
+	(*ComparisonEntry)(nil),             // 53: loadline.v1.ComparisonEntry
+	(*ComparisonResult)(nil),            // 54: loadline.v1.ComparisonResult
+	(*RunComparisonResponse)(nil),       // 55: loadline.v1.RunComparisonResponse
+	(*GetComparisonRequest)(nil),        // 56: loadline.v1.GetComparisonRequest
+	(*GetComparisonResponse)(nil),       // 57: loadline.v1.GetComparisonResponse
+	(*CatalogService)(nil),              // 58: loadline.v1.CatalogService
+	(*ListCatalogRequest)(nil),          // 59: loadline.v1.ListCatalogRequest
+	(*ListCatalogResponse)(nil),         // 60: loadline.v1.ListCatalogResponse
+	nil,                                 // 61: loadline.v1.ComponentSpec.ServiceTimeMillisEntry
+	nil,                                 // 62: loadline.v1.CostEstimate.ByCategoryEntry
 }
 var file_loadline_v1_simulation_proto_depIdxs = []int32{
 	0,  // 0: loadline.v1.ComponentSpec.kind:type_name -> loadline.v1.ComponentKind
-	54, // 1: loadline.v1.ComponentSpec.service_time_millis:type_name -> loadline.v1.ComponentSpec.ServiceTimeMillisEntry
+	61, // 1: loadline.v1.ComponentSpec.service_time_millis:type_name -> loadline.v1.ComponentSpec.ServiceTimeMillisEntry
 	4,  // 2: loadline.v1.ComponentSpec.config:type_name -> loadline.v1.ProviderConfig
 	3,  // 3: loadline.v1.Architecture.components:type_name -> loadline.v1.ComponentSpec
 	5,  // 4: loadline.v1.Architecture.links:type_name -> loadline.v1.Link
@@ -4523,41 +4998,60 @@ var file_loadline_v1_simulation_proto_depIdxs = []int32{
 	40, // 38: loadline.v1.GetDiagnosisResponse.diagnosis:type_name -> loadline.v1.Diagnosis
 	43, // 39: loadline.v1.GetCapacityResponse.reports:type_name -> loadline.v1.CapacityReport
 	46, // 40: loadline.v1.ComponentCost.line_items:type_name -> loadline.v1.CostLineItem
-	55, // 41: loadline.v1.CostEstimate.by_category:type_name -> loadline.v1.CostEstimate.ByCategoryEntry
+	62, // 41: loadline.v1.CostEstimate.by_category:type_name -> loadline.v1.CostEstimate.ByCategoryEntry
 	47, // 42: loadline.v1.CostEstimate.components:type_name -> loadline.v1.ComponentCost
 	48, // 43: loadline.v1.GetCostEstimateResponse.estimate:type_name -> loadline.v1.CostEstimate
-	51, // 44: loadline.v1.ListCatalogResponse.services:type_name -> loadline.v1.CatalogService
-	13, // 45: loadline.v1.SimulationService.CreateSimulation:input_type -> loadline.v1.CreateSimulationRequest
-	15, // 46: loadline.v1.SimulationService.RunSimulation:input_type -> loadline.v1.RunSimulationRequest
-	28, // 47: loadline.v1.SimulationService.GetSimulationStatus:input_type -> loadline.v1.GetSimulationStatusRequest
-	30, // 48: loadline.v1.SimulationService.StreamMetrics:input_type -> loadline.v1.StreamMetricsRequest
-	18, // 49: loadline.v1.SimulationService.PauseSimulation:input_type -> loadline.v1.PauseSimulationRequest
-	20, // 50: loadline.v1.SimulationService.ResumeSimulation:input_type -> loadline.v1.ResumeSimulationRequest
-	22, // 51: loadline.v1.SimulationService.StopSimulation:input_type -> loadline.v1.StopSimulationRequest
-	24, // 52: loadline.v1.SimulationService.SetWallDuration:input_type -> loadline.v1.SetWallDurationRequest
-	36, // 53: loadline.v1.SimulationService.GetResults:input_type -> loadline.v1.GetResultsRequest
-	41, // 54: loadline.v1.SimulationService.GetDiagnosis:input_type -> loadline.v1.GetDiagnosisRequest
-	44, // 55: loadline.v1.SimulationService.GetCapacity:input_type -> loadline.v1.GetCapacityRequest
-	49, // 56: loadline.v1.SimulationService.GetCostEstimate:input_type -> loadline.v1.GetCostEstimateRequest
-	52, // 57: loadline.v1.SimulationService.ListCatalog:input_type -> loadline.v1.ListCatalogRequest
-	14, // 58: loadline.v1.SimulationService.CreateSimulation:output_type -> loadline.v1.CreateSimulationResponse
-	16, // 59: loadline.v1.SimulationService.RunSimulation:output_type -> loadline.v1.RunSimulationResponse
-	29, // 60: loadline.v1.SimulationService.GetSimulationStatus:output_type -> loadline.v1.GetSimulationStatusResponse
-	31, // 61: loadline.v1.SimulationService.StreamMetrics:output_type -> loadline.v1.StreamMetricsResponse
-	19, // 62: loadline.v1.SimulationService.PauseSimulation:output_type -> loadline.v1.PauseSimulationResponse
-	21, // 63: loadline.v1.SimulationService.ResumeSimulation:output_type -> loadline.v1.ResumeSimulationResponse
-	23, // 64: loadline.v1.SimulationService.StopSimulation:output_type -> loadline.v1.StopSimulationResponse
-	25, // 65: loadline.v1.SimulationService.SetWallDuration:output_type -> loadline.v1.SetWallDurationResponse
-	37, // 66: loadline.v1.SimulationService.GetResults:output_type -> loadline.v1.GetResultsResponse
-	42, // 67: loadline.v1.SimulationService.GetDiagnosis:output_type -> loadline.v1.GetDiagnosisResponse
-	45, // 68: loadline.v1.SimulationService.GetCapacity:output_type -> loadline.v1.GetCapacityResponse
-	50, // 69: loadline.v1.SimulationService.GetCostEstimate:output_type -> loadline.v1.GetCostEstimateResponse
-	53, // 70: loadline.v1.SimulationService.ListCatalog:output_type -> loadline.v1.ListCatalogResponse
-	58, // [58:71] is the sub-list for method output_type
-	45, // [45:58] is the sub-list for method input_type
-	45, // [45:45] is the sub-list for extension type_name
-	45, // [45:45] is the sub-list for extension extendee
-	0,  // [0:45] is the sub-list for field type_name
+	6,  // 44: loadline.v1.ComparisonArchitectureInput.architecture:type_name -> loadline.v1.Architecture
+	7,  // 45: loadline.v1.RunComparisonRequest.workload:type_name -> loadline.v1.WorkloadSpec
+	51, // 46: loadline.v1.RunComparisonRequest.architectures:type_name -> loadline.v1.ComparisonArchitectureInput
+	11, // 47: loadline.v1.RunComparisonRequest.options:type_name -> loadline.v1.SimulationOptions
+	8,  // 48: loadline.v1.ComparisonEntry.plan:type_name -> loadline.v1.LoadPlan
+	34, // 49: loadline.v1.ComparisonEntry.metrics:type_name -> loadline.v1.SystemMetrics
+	33, // 50: loadline.v1.ComparisonEntry.failures:type_name -> loadline.v1.FailureRecord
+	35, // 51: loadline.v1.ComparisonEntry.summary:type_name -> loadline.v1.RunSummary
+	40, // 52: loadline.v1.ComparisonEntry.diagnosis:type_name -> loadline.v1.Diagnosis
+	43, // 53: loadline.v1.ComparisonEntry.capacity:type_name -> loadline.v1.CapacityReport
+	48, // 54: loadline.v1.ComparisonEntry.cost:type_name -> loadline.v1.CostEstimate
+	7,  // 55: loadline.v1.ComparisonResult.workload:type_name -> loadline.v1.WorkloadSpec
+	53, // 56: loadline.v1.ComparisonResult.entries:type_name -> loadline.v1.ComparisonEntry
+	54, // 57: loadline.v1.RunComparisonResponse.result:type_name -> loadline.v1.ComparisonResult
+	54, // 58: loadline.v1.GetComparisonResponse.result:type_name -> loadline.v1.ComparisonResult
+	58, // 59: loadline.v1.ListCatalogResponse.services:type_name -> loadline.v1.CatalogService
+	13, // 60: loadline.v1.SimulationService.CreateSimulation:input_type -> loadline.v1.CreateSimulationRequest
+	15, // 61: loadline.v1.SimulationService.RunSimulation:input_type -> loadline.v1.RunSimulationRequest
+	28, // 62: loadline.v1.SimulationService.GetSimulationStatus:input_type -> loadline.v1.GetSimulationStatusRequest
+	30, // 63: loadline.v1.SimulationService.StreamMetrics:input_type -> loadline.v1.StreamMetricsRequest
+	18, // 64: loadline.v1.SimulationService.PauseSimulation:input_type -> loadline.v1.PauseSimulationRequest
+	20, // 65: loadline.v1.SimulationService.ResumeSimulation:input_type -> loadline.v1.ResumeSimulationRequest
+	22, // 66: loadline.v1.SimulationService.StopSimulation:input_type -> loadline.v1.StopSimulationRequest
+	24, // 67: loadline.v1.SimulationService.SetWallDuration:input_type -> loadline.v1.SetWallDurationRequest
+	36, // 68: loadline.v1.SimulationService.GetResults:input_type -> loadline.v1.GetResultsRequest
+	41, // 69: loadline.v1.SimulationService.GetDiagnosis:input_type -> loadline.v1.GetDiagnosisRequest
+	44, // 70: loadline.v1.SimulationService.GetCapacity:input_type -> loadline.v1.GetCapacityRequest
+	49, // 71: loadline.v1.SimulationService.GetCostEstimate:input_type -> loadline.v1.GetCostEstimateRequest
+	59, // 72: loadline.v1.SimulationService.ListCatalog:input_type -> loadline.v1.ListCatalogRequest
+	52, // 73: loadline.v1.SimulationService.RunComparison:input_type -> loadline.v1.RunComparisonRequest
+	56, // 74: loadline.v1.SimulationService.GetComparison:input_type -> loadline.v1.GetComparisonRequest
+	14, // 75: loadline.v1.SimulationService.CreateSimulation:output_type -> loadline.v1.CreateSimulationResponse
+	16, // 76: loadline.v1.SimulationService.RunSimulation:output_type -> loadline.v1.RunSimulationResponse
+	29, // 77: loadline.v1.SimulationService.GetSimulationStatus:output_type -> loadline.v1.GetSimulationStatusResponse
+	31, // 78: loadline.v1.SimulationService.StreamMetrics:output_type -> loadline.v1.StreamMetricsResponse
+	19, // 79: loadline.v1.SimulationService.PauseSimulation:output_type -> loadline.v1.PauseSimulationResponse
+	21, // 80: loadline.v1.SimulationService.ResumeSimulation:output_type -> loadline.v1.ResumeSimulationResponse
+	23, // 81: loadline.v1.SimulationService.StopSimulation:output_type -> loadline.v1.StopSimulationResponse
+	25, // 82: loadline.v1.SimulationService.SetWallDuration:output_type -> loadline.v1.SetWallDurationResponse
+	37, // 83: loadline.v1.SimulationService.GetResults:output_type -> loadline.v1.GetResultsResponse
+	42, // 84: loadline.v1.SimulationService.GetDiagnosis:output_type -> loadline.v1.GetDiagnosisResponse
+	45, // 85: loadline.v1.SimulationService.GetCapacity:output_type -> loadline.v1.GetCapacityResponse
+	50, // 86: loadline.v1.SimulationService.GetCostEstimate:output_type -> loadline.v1.GetCostEstimateResponse
+	60, // 87: loadline.v1.SimulationService.ListCatalog:output_type -> loadline.v1.ListCatalogResponse
+	55, // 88: loadline.v1.SimulationService.RunComparison:output_type -> loadline.v1.RunComparisonResponse
+	57, // 89: loadline.v1.SimulationService.GetComparison:output_type -> loadline.v1.GetComparisonResponse
+	75, // [75:90] is the sub-list for method output_type
+	60, // [60:75] is the sub-list for method input_type
+	60, // [60:60] is the sub-list for extension type_name
+	60, // [60:60] is the sub-list for extension extendee
+	0,  // [0:60] is the sub-list for field type_name
 }
 
 func init() { file_loadline_v1_simulation_proto_init() }
@@ -4577,7 +5071,7 @@ func file_loadline_v1_simulation_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_loadline_v1_simulation_proto_rawDesc), len(file_loadline_v1_simulation_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   53,
+			NumMessages:   60,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

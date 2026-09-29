@@ -335,6 +335,13 @@ export function validateArchitecture(arch: Architecture, failures: Failure[]): s
   const clients = arch.components.filter((c) => c.kind === ComponentKind.CLIENT);
   if (clients.length === 0) issues.push("no client — the simulator needs exactly one");
   if (clients.length > 1) issues.push("multiple clients — the simulator needs exactly one");
+  for (const c of arch.components) {
+    if (c.kind === ComponentKind.UNSPECIFIED) {
+      issues.push(
+        `component "${c.id}" has an unknown kind — remove it and add it again from the palette`,
+      );
+    }
+  }
   for (const l of arch.links) {
     if (!ids.has(l.from) || !ids.has(l.to)) {
       issues.push(`link ${l.from} → ${l.to} references a missing component`);
@@ -374,18 +381,29 @@ export function kindRole(kind: number): string {
   }
 }
 
-/** proto enum name → numeric ComponentKind for drop → node creation. */
+/**
+ * Catalog kind name → numeric ComponentKind for drop → node creation.
+ *
+ * The catalog ships `CatalogService.component_kind` as a plain domain
+ * string ("api_server", "cache", …) because `componentKindName` returns
+ * `string(spec.Kind)` from the simulator's own enum. Protobuf-encoded
+ * enum names ("COMPONENT_KIND_API_SERVER") are accepted too so a future
+ * `ListCatalog` that echoes the proto enum still resolves. Anything
+ * unresolvable maps to UNSPECIFIED, which `validateArchitecture` reports
+ * as an actionable issue rather than letting the run fail at the backend.
+ */
 export function kindFromProtoName(name: string): number {
+  const key = (name ?? "").trim().replace(/^COMPONENT_KIND_/, "").toUpperCase();
   const table: Record<string, number> = {
-    COMPONENT_KIND_CLIENT: ComponentKind.CLIENT,
-    COMPONENT_KIND_LOAD_BALANCER: ComponentKind.LOAD_BALANCER,
-    COMPONENT_KIND_API_SERVER: ComponentKind.API_SERVER,
-    COMPONENT_KIND_CACHE: ComponentKind.CACHE,
-    COMPONENT_KIND_QUEUE: ComponentKind.QUEUE,
-    COMPONENT_KIND_WORKER: ComponentKind.WORKER,
-    COMPONENT_KIND_DATABASE: ComponentKind.DATABASE,
-    COMPONENT_KIND_OBJECT_STORAGE: ComponentKind.OBJECT_STORAGE,
-    COMPONENT_KIND_NETWORK: ComponentKind.NETWORK,
+    CLIENT: ComponentKind.CLIENT,
+    LOAD_BALANCER: ComponentKind.LOAD_BALANCER,
+    API_SERVER: ComponentKind.API_SERVER,
+    CACHE: ComponentKind.CACHE,
+    QUEUE: ComponentKind.QUEUE,
+    WORKER: ComponentKind.WORKER,
+    DATABASE: ComponentKind.DATABASE,
+    OBJECT_STORAGE: ComponentKind.OBJECT_STORAGE,
+    NETWORK: ComponentKind.NETWORK,
   };
-  return table[name] ?? 0;
+  return table[key] ?? 0;
 }

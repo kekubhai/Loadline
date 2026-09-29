@@ -547,6 +547,77 @@ message GetCostEstimateResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Architecture comparison
+// ---------------------------------------------------------------------------
+
+// ComparisonArchitectureInput is one architecture in a comparison: the
+// architecture itself plus a display name. The workload, options, and
+// seed are shared across ALL architectures in the comparison — every
+// difference in the results comes from the architecture, nothing else.
+message ComparisonArchitectureInput {
+  // Display name shown in the comparison table (e.g. "aws-web").
+  string name = 1;
+  Architecture architecture = 2;
+}
+
+// RunComparisonRequest is the comparison model: ONE workload, TWO OR
+// MORE architectures, ONE shared options/seed. Each architecture is
+// simulated independently; identical inputs guarantee identical arrivals
+// so metrics are directly comparable.
+message RunComparisonRequest {
+  // The single workload every architecture receives. Required.
+  WorkloadSpec workload = 1;
+  // Two or more architectures. Fewer than two is rejected.
+  repeated ComparisonArchitectureInput architectures = 2;
+  // Shared simulation configuration: seed, duration, retries, timeouts.
+  // Failure injections here are the SHARED failure scenario applied to
+  // every architecture (targets must exist in each architecture).
+  SimulationOptions options = 3;
+}
+
+// ComparisonEntry is one architecture's full result set, exactly what a
+// solo run of that architecture would have produced with the shared
+// workload/options.
+message ComparisonEntry {
+  string name = 1;
+  // Error text when this architecture failed validation/simulation; the
+  // other fields are absent for failed entries (one bad architecture
+  // never sinks the whole comparison).
+  string error = 2;
+  LoadPlan plan = 3;
+  SystemMetrics metrics = 4;
+  repeated FailureRecord failures = 5;
+  RunSummary summary = 6;
+  Diagnosis diagnosis = 7;
+  repeated CapacityReport capacity = 8;
+  CostEstimate cost = 9;
+}
+
+// ComparisonResult carries the per-architecture results. There is
+// deliberately NO score, NO ranking, and NO recommendation field: the
+// user decides which tradeoff matters. Entries keep request order.
+message ComparisonResult {
+  // Echo of the shared workload actually used (after defaulting).
+  WorkloadSpec workload = 1;
+  // Effective seed echoed for reproducibility (0 → defaulted to 1).
+  uint64 seed = 2;
+  repeated ComparisonEntry entries = 3;
+}
+
+message RunComparisonResponse {
+  ComparisonResult result = 1;
+}
+
+// GetComparisonRequest re-fetches a stored comparison result.
+message GetComparisonRequest {
+  string comparison_id = 1;
+}
+
+message GetComparisonResponse {
+  ComparisonResult result = 1;
+}
+
+// ---------------------------------------------------------------------------
 // Provider catalog
 // ---------------------------------------------------------------------------
 
@@ -614,4 +685,11 @@ service SimulationService {
   rpc GetCostEstimate(GetCostEstimateRequest) returns (GetCostEstimateResponse);
   // List the built-in provider catalog.
   rpc ListCatalog(ListCatalogRequest) returns (ListCatalogResponse);
+  // Run an architecture comparison: one shared workload, two or more
+  // architectures, each simulated independently with the same seed and
+  // options. Returns per-architecture metrics, bottlenecks, capacity,
+  // and cost — no scores, no ranking.
+  rpc RunComparison(RunComparisonRequest) returns (RunComparisonResponse);
+  // Fetch a previously run comparison.
+  rpc GetComparison(GetComparisonRequest) returns (GetComparisonResponse);
 }

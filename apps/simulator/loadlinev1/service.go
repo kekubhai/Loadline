@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -21,6 +22,12 @@ import (
 type Service struct {
 	store *Store
 	seq   atomic.Uint64 // per-process goroutine bookkeeping (diagnostics)
+
+	// comparison store: results of RunComparison calls, fetchable via
+	// GetComparison. In-memory, mirroring the run store.
+	compMu      sync.RWMutex
+	comparisons map[string]*v1.ComparisonResult
+	compSeq     int
 }
 
 // compile-time check that the generated handler contract is met.
@@ -28,7 +35,10 @@ var _ lv1connect.SimulationServiceHandler = (*Service)(nil)
 
 // NewService wires the Connect service to a run store.
 func NewService(store *Store) *Service {
-	return &Service{store: store}
+	return &Service{
+		store:       store,
+		comparisons: map[string]*v1.ComparisonResult{},
+	}
 }
 
 // CreateSimulation validates and stores a simulation without running it.

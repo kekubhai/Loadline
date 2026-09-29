@@ -33,7 +33,8 @@ import type {
   WorkloadSpec,
 } from "@loadline/api";
 import { Badge, Button, Divider, EmptyState, Section, Select, toneForWord } from "./ui";
-import { f0, f1, f2, kindName, pct, price } from "./format";
+import { f0, f1, f2, kindName, normKind, pct, price } from "./format";
+import { kindFromProtoName } from "../app/editor";
 import {
   BigIntInput,
   FAILURE_LABELS,
