@@ -1,0 +1,198 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------
+  # Go engine: formatting, vet, build, and the full test suite under the
+  # race detector (the API layer runs simulations on worker goroutines, so
+  # data races are a real risk here).
+  # ---------------------------------------------------------------------
+  go:
+    name: go tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/simulator
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+          cache-dependency-path: apps/simulator/go.sum
+
+      - name: gofmt (fail on unformatted files)
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then
+            echo "gofmt needed on:"
+            echo "$out"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        run: go build ./...
+
+      - name: go test -race
+        run: go test -race -count=1 ./...
+
+  # ---------------------------------------------------------------------
+  # Frontend: workspace typecheck (turbo covers @loadline/api and
+  # @loadline/web), the vitest suite, and a production Next.js build.
+  # ---------------------------------------------------------------------
+  web:
+    name: web typecheck + tests + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: install
+        run: pnpm install --frozen-lockfile
+
+      - name: typecheck (api + web)
+        run: pnpm typecheck
+
+      - name: web tests
+        run: pnpm --filter @loadline/web test
+
+      - name: next build
+        run: pnpm --filter @loadline/web build
+
+  # ---------------------------------------------------------------------
+  # Protobuf contract: lint the schema and regenerate the Go + TypeScript
+  # clients, then fail if the committed generated code is stale. This is
+  # what keeps proto/loadline, apps/simulator/loadline and packages/api
+  # from drifting apart.
+  # ---------------------------------------------------------------------
+  proto:
+    name: proto lint + codegen drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: install js deps (protoc-gen-es)
+        run: pnpm install --frozen-lockfile
+
+      - name: add GOPATH/bin to PATH
+        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: install go plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          go install connectrpc.com/connect/cmd/protoc-gen-connect-go@latest
+
+      - name: buf lint
+        run: npx --yes @bufbuild/buf@1.50.0 lint
+
+      - name: buf generate
+        run: npx --yes @bufbuild/buf@1.50.0 generate
+
+      - name: fail if generated code is out of date
+        run: |
+          git diff --exit-code -- \
+            apps/simulator/loadline \
+            packages/api/src \
+            || {
+              echo "::error::generated protobuf code does not match proto/ - run 'npx @bufbuild/buf generate' and commit the result"
+              exit 1
+            }
+
+  # ---------------------------------------------------------------------
+  # Cross-stack end-to-end: real Go server over TCP, real Connect client
+  # from packages/api, no mocks. Mirrors the documented local command:
+  #   cd apps/simulator && go run ./cmd/loadline-server -addr 127.0.0.1:8080
+  #   cd tests/e2e && npx vitest run --root .
+  # ---------------------------------------------------------------------
+  e2e:
+    name: cross-stack e2e
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+          cache-dependency-path: apps/simulator/go.sum
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: install
+        run: pnpm install --frozen-lockfile
+
+      - name: build server
+        working-directory: apps/simulator
+        run: go build -o loadline-server ./cmd/loadline-server
+
+      - name: start server
+        working-directory: apps/simulator
+        run: |
+          ./loadline-server -addr 127.0.0.1:8080 > /tmp/loadline-server.log 2>&1 &
+          echo $! > /tmp/loadline-server.pid
+
+      - name: wait for server
+        run: |
+          for i in $(seq 1 30); do
+            if curl -s -o /dev/null "http://127.0.0.1:8080/"; then
+              echo "server is up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::loadline-server did not become ready"
+          cat /tmp/loadline-server.log || true
+          exit 1
+
+      - name: e2e tests
+        env:
+          E2E_BASE_URL: http://127.0.0.1:8080
+        run: pnpm --filter @loadline/e2e test
+
+      - name: server log
+        if: always()
+        run: cat /tmp/loadline-server.log || true
+
+      - name: stop server
+        if: always()
+        run: kill "$(cat /tmp/loadline-server.pid)" 2>/dev/null || true
