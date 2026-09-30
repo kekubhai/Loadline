@@ -4,6 +4,7 @@ import "./globals.css";
 import "./primitives.css";
 import "./shell.css";
 import "./analysis.css";
+import "./workspace.css";
 
 export const metadata: Metadata = {
   title: "LOADLINE",
