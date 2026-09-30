@@ -372,6 +372,36 @@ export function validateArchitecture(arch: Architecture, failures: Failure[]): s
       issues.push(`failure targets missing component "${f.target}"`);
     }
   }
+  // Queue/worker pairing mirrors sim.Architecture.Validate: the backend
+  // hard-rejects these shapes at run time, so surface them up front.
+  const byId = new Map(arch.components.map((c) => [c.id, c]));
+  for (const c of arch.components) {
+    if (c.kind === ComponentKind.QUEUE) {
+      const workers = arch.links.filter(
+        (l) => l.from === c.id && byId.get(l.to)?.kind === ComponentKind.WORKER,
+      ).length;
+      if (workers !== 1) {
+        issues.push(
+          `queue "${c.id}" must link to exactly one worker (found ${workers})`,
+        );
+      }
+    }
+    if (c.kind === ComponentKind.WORKER) {
+      if (arch.links.some((l) => l.from === c.id)) {
+        issues.push(
+          `worker "${c.id}" must be the end of its flow — the simulator treats a worker completion as the request's completion`,
+        );
+      }
+      const queues = arch.links.filter(
+        (l) => l.to === c.id && byId.get(l.from)?.kind === ComponentKind.QUEUE,
+      ).length;
+      if (queues !== 1) {
+        issues.push(
+          `worker "${c.id}" must be linked from exactly one queue (found ${queues})`,
+        );
+      }
+    }
+  }
   return issues;
 }
 

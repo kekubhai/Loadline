@@ -96,7 +96,7 @@ export const TEMPLATES: ArchitectureTemplate[] = [
     id: "queue-workers",
     name: "async worker pipeline",
     description:
-      "client → lambda → sqs → worker pool → rds. Work is buffered: raise the load and watch the queue grow instead of the API failing.",
+      "client → lambda → rds for sync reads, plus lambda → sqs → worker pool for buffered work (the worker is terminal: its completions end the async request). Raise the load and watch the queue grow instead of the API failing.",
     architecture: arch(
       "queue-workers",
       [
@@ -125,9 +125,9 @@ export const TEMPLATES: ArchitectureTemplate[] = [
       ],
       [
         ["client", "api"],
+        ["api", "db"],
         ["api", "queue"],
         ["queue", "worker"],
-        ["worker", "db"],
       ],
     ),
   },

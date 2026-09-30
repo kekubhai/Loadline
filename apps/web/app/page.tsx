@@ -48,6 +48,7 @@ import type { SimConsoleHandles, SimOutcome } from "../components/simconsole";
 import { WorkloadPanel } from "../components/workloadpanel";
 import { FailurePanel } from "../components/failurepanel";
 import { ComparisonView } from "../components/comparisonview";
+import { ExploreGallery } from "../components/exploregallery";
 import {
   BottleneckPanel,
   CapacityPanel,
@@ -90,6 +91,12 @@ import {
   serializeDocument,
 } from "./documentio";
 import { TEMPLATES, templateById, templateState } from "./templates";
+import {
+  EXPLORE_CATEGORIES,
+  exploreState,
+  exploreSystemById,
+} from "./explore";
+import type { ExploreSystem } from "./explore";
 import {
   runReducer,
   initialRun,
@@ -336,6 +343,24 @@ export default function Home() {
     [editor, loadState],
   );
 
+  /** Gallery-loaded system, if the current architecture is one of them. */
+  const activeExploreSystemId = useMemo(() => {
+    for (const c of EXPLORE_CATEGORIES) {
+      for (const s of c.systems) {
+        if (s.architecture === editor.architecture) return s.id;
+      }
+    }
+    return null;
+  }, [editor.architecture]);
+
+  const onExploreSystem = useCallback(
+    (s: ExploreSystem) => {
+      loadState(exploreState(s, editor));
+      setNotice(`loaded system: ${s.name} — raise the load, inject a failure, read the diagnosis`);
+    },
+    [editor, loadState],
+  );
+
   // A shared link opens as the architecture it encodes.
   useEffect(() => {
     const doc = decodeShareHash(window.location.hash);
@@ -563,9 +588,20 @@ export default function Home() {
           () => onTemplate(t.id),
         ),
       ),
+      ...EXPLORE_CATEGORIES.flatMap((c) =>
+        c.systems.map((s) =>
+          cmd(
+            `explore-${s.id}`,
+            "explore",
+            `Explore ${s.name}`,
+            undefined,
+            () => onExploreSystem(s),
+          ),
+        ),
+      ),
     ];
     return list;
-  }, [onExport, onShare, onTemplate, redo, runSimulation, undo]);
+  }, [onExploreSystem, onExport, onShare, onTemplate, redo, runSimulation, undo]);
 
   /**
    * Global keyboard layer. Typing in a field never triggers an editor
@@ -821,6 +857,12 @@ export default function Home() {
             <p className="pal-note">
               ⌘K commands · ⌘Z undo · R run · F fit · Del remove
             </p>
+
+            <div className="pal-head">Explore systems</div>
+            <ExploreGallery
+              activeSystemId={activeExploreSystemId}
+              onSelect={onExploreSystem}
+            />
           </aside>
 
           {/* ------------------------------------------------------ canvas */}

@@ -177,14 +177,26 @@ describe("share hash", () => {
 
 describe("component kinds in documents", () => {
   it("keeps numeric kinds intact through JSON", () => {
-    const state = editorReducer(initialEditorState, {
+    // A queue-only architecture is invalid (the simulator requires a
+    // queue to link to exactly one terminal worker), so build the full
+    // valid pair — the point here is JSON kind round-tripping.
+    let state = editorReducer(initialEditorState, {
       type: "addComponent",
       provider: "aws",
       service: "sqs",
       kind: ComponentKind.QUEUE,
     });
+    state = editorReducer(state, {
+      type: "addComponent",
+      kind: ComponentKind.WORKER,
+      provider: "",
+      service: "worker",
+    });
+    state = editorReducer(state, { type: "connect", from: "sqs", to: "worker" });
     const parsed = parseDocument(serializeDocument(exportDocument(state)));
     const queue = parsed.architecture.components.find((c) => c.id === "sqs");
     expect(queue?.kind).toBe(ComponentKind.QUEUE);
+    const worker = parsed.architecture.components.find((c) => c.kind === ComponentKind.WORKER);
+    expect(worker?.kind).toBe(ComponentKind.WORKER);
   });
 });
