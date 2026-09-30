@@ -29,6 +29,7 @@ import {
   createLoadlineClient,
 } from "@loadline/api";
 import type {
+  Architecture,
   CatalogService,
   Failure,
   SimulationOptions,
@@ -48,6 +49,7 @@ import type { SimConsoleHandles, SimOutcome } from "../components/simconsole";
 import { WorkloadPanel } from "../components/workloadpanel";
 import { FailurePanel } from "../components/failurepanel";
 import { ComparisonView } from "../components/comparisonview";
+import { WorkspaceView } from "../components/workspaceview";
 import { ExploreGallery } from "../components/exploregallery";
 import {
   BottleneckPanel,
@@ -129,6 +131,24 @@ export default function Home() {
   const loadState = useCallback(
     (state: EditorState) => dispatchHist({ type: "load", state }),
     [],
+  );
+  /**
+   * Load part of a saved document into the editor (the workspace view's
+   * "load" actions). Loading replaces the indicated part and clears the
+   * canvas layout, so the loaded architecture is laid out fresh rather
+   * than inheriting positions from whatever was open before. It goes
+   * through the history reducer, so a load is as undoable as any edit.
+   */
+  const loadDocument = useCallback(
+    (doc: { architecture?: Architecture; workload?: WorkloadSpec }) =>
+      loadState({
+        ...editor,
+        ...(doc.architecture
+          ? { architecture: doc.architecture, positions: {}, selected: null }
+          : {}),
+        ...(doc.workload ? { workload: doc.workload } : {}),
+      }),
+    [editor, loadState],
   );
   const [state, runDispatch] = useReducer(runReducer, initialRun);
   const [view, setView] = useState("architecture");
@@ -696,7 +716,7 @@ export default function Home() {
           </span>
         </div>
         <nav className="topnav-views" aria-label="views">
-          {["architecture", "simulation", "comparison"].map((v) => (
+          {["architecture", "simulation", "comparison", "workspace"].map((v) => (
             <button
               key={v}
               type="button"
@@ -973,6 +993,29 @@ export default function Home() {
               if (!res.result) throw new Error("backend returned no comparison result");
               return res.result;
             }}
+          />
+        </div>
+      ) : view === "workspace" ? (
+        /* ---------------------------------------------- workspace view */
+        <div className="sim-view">
+          <div className="sim-toolbar">
+            <Field label="server">
+              <Input value={serverUrl} onChange={setServerUrl} width={220} />
+            </Field>
+            <span className="sim-toolbar-note">
+              projects, architectures, versions, workloads and runs live in
+              postgresql · saving always appends, so a stored run stays
+              reproducible
+            </span>
+          </div>
+          <WorkspaceView
+            serverUrl={serverUrl}
+            architecture={editor.architecture}
+            workload={editor.workload}
+            options={editor.options}
+            failures={editor.failures}
+            onLoadDocument={loadDocument}
+            onNotice={setNotice}
           />
         </div>
       ) : (

@@ -1,0 +1,375 @@
+syntax = "proto3";
+
+package loadline.v1;
+
+import "google/protobuf/timestamp.proto";
+import "loadline/v1/simulation.proto";
+
+option go_package = "github.com/kekubhai/Loadline/apps/simulator/loadline/v1;loadlinev1";
+
+// ---------------------------------------------------------------------------
+// Workspace persistence
+// ---------------------------------------------------------------------------
+//
+// WorkspaceService is LOADLINE's persistence-backed API: the documents a
+// user builds and keeps, as opposed to SimulationService's ephemeral
+// what-if runs.
+//
+//   Project
+//     └── Architecture
+//           └── ArchitectureVersion (immutable snapshot)
+//                 ├── Workload
+//                 └── SimulationRun ──> result summary
+//
+// Every architecture-shaped message here is the SAME canonical document the
+// simulator consumes (Architecture, WorkloadSpec). Persistence stores and
+// returns that document verbatim; it never defines a second format, and it
+// never computes a metric. The numbers in a stored result were produced by
+// the simulation engine and the provider models during the run, and reading
+// a run back does not re-derive or approximate them.
+
+// Project is a LOADLINE workspace: the container the dashboard opens into.
+message Project {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+message CreateProjectRequest {
+  string name = 1;
+  string description = 2;
+}
+
+message CreateProjectResponse {
+  Project project = 1;
+}
+
+message GetProjectRequest {
+  string id = 1;
+}
+
+message GetProjectResponse {
+  Project project = 1;
+}
+
+message ListProjectsRequest {}
+
+message ListProjectsResponse {
+  repeated Project projects = 1;
+}
+
+message UpdateProjectRequest {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+}
+
+message UpdateProjectResponse {
+  Project project = 1;
+}
+
+message DeleteProjectRequest {
+  string id = 1;
+}
+
+// DeleteProjectResponse is empty: a successful delete removes the project
+// and, by foreign key, everything it contained.
+message DeleteProjectResponse {}
+
+// ArchitectureRecord is a logical architecture inside a project. Its content
+// lives in ArchitectureVersion rows; this record is the stable identity the
+// user sees and renames.
+message ArchitectureRecord {
+  string id = 1;
+  string project_id = 2;
+  string name = 3;
+  string description = 4;
+  // version_count: how many immutable versions exist. latest_version is 0
+  // when no version has been created yet.
+  int32 version_count = 5;
+  int32 latest_version = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+// ArchitectureVersion is an immutable snapshot of an architecture.
+//
+// definition is the canonical architecture document. Versions are
+// append-only: modifying an architecture creates a NEW version, so a stored
+// simulation run always refers to exactly the architecture it ran.
+message ArchitectureVersion {
+  string id = 1;
+  string architecture_id = 2;
+  // version is the 1-based sequence number, assigned by the server.
+  int32 version = 3;
+  Architecture definition = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+message CreateArchitectureRequest {
+  string project_id = 1;
+  string name = 2;
+  string description = 3;
+  // definition is required: an architecture is created together with its
+  // first version, atomically.
+  Architecture definition = 4;
+}
+
+message CreateArchitectureResponse {
+  ArchitectureRecord architecture = 1;
+  ArchitectureVersion version = 2;
+}
+
+message GetArchitectureRequest {
+  string id = 1;
+}
+
+message GetArchitectureResponse {
+  ArchitectureRecord architecture = 1;
+}
+
+message ListArchitecturesRequest {
+  string project_id = 1;
+}
+
+message ListArchitecturesResponse {
+  repeated ArchitectureRecord architectures = 1;
+}
+
+message UpdateArchitectureRequest {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+}
+
+message UpdateArchitectureResponse {
+  ArchitectureRecord architecture = 1;
+}
+
+message DeleteArchitectureRequest {
+  string id = 1;
+}
+
+message DeleteArchitectureResponse {}
+
+// CreateArchitectureVersionRequest appends a new immutable version to an
+// existing architecture. The version number is assigned by the server.
+message CreateArchitectureVersionRequest {
+  string architecture_id = 1;
+  Architecture definition = 2;
+}
+
+message CreateArchitectureVersionResponse {
+  ArchitectureVersion version = 1;
+}
+
+message GetArchitectureVersionRequest {
+  string id = 1;
+}
+
+message GetArchitectureVersionResponse {
+  ArchitectureVersion version = 1;
+}
+
+message ListArchitectureVersionsRequest {
+  string architecture_id = 1;
+}
+
+message ListArchitectureVersionsResponse {
+  // versions are ordered oldest first (v1, v2, v3, …).
+  repeated ArchitectureVersion versions = 1;
+}
+
+// WorkloadRecord is a load definition attached to one architecture version.
+//
+// spec is the canonical workload document; the derived load plan is NOT part
+// of it, because the plan is a pure function of the spec and is stored per
+// run instead.
+message WorkloadRecord {
+  string id = 1;
+  string architecture_version_id = 2;
+  string name = 3;
+  WorkloadSpec spec = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+message CreateWorkloadRequest {
+  string architecture_version_id = 1;
+  string name = 2;
+  WorkloadSpec spec = 3;
+}
+
+message CreateWorkloadResponse {
+  WorkloadRecord workload = 1;
+}
+
+message GetWorkloadRequest {
+  string id = 1;
+}
+
+message GetWorkloadResponse {
+  WorkloadRecord workload = 1;
+}
+
+message ListWorkloadsRequest {
+  string architecture_version_id = 1;
+}
+
+message ListWorkloadsResponse {
+  repeated WorkloadRecord workloads = 1;
+}
+
+message UpdateWorkloadRequest {
+  string id = 1;
+  string name = 2;
+  WorkloadSpec spec = 3;
+}
+
+message UpdateWorkloadResponse {
+  WorkloadRecord workload = 1;
+}
+
+message DeleteWorkloadRequest {
+  string id = 1;
+}
+
+message DeleteWorkloadResponse {}
+
+// SimulationRunRecord is one persisted execution of a simulation.
+//
+// seed is always stored: a run whose seed was not recorded could not be
+// reproduced. duration_ms is the simulated horizon that was measured, not
+// wall-clock time.
+message SimulationRunRecord {
+  string id = 1;
+  string architecture_version_id = 2;
+  // workload_id is empty when the workload was deleted after the run.
+  string workload_id = 3;
+  RunStatus status = 4;
+  uint64 seed = 5;
+  double duration_ms = 6;
+  // error explains a failed run; empty otherwise.
+  string error = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp started_at = 9;
+  google.protobuf.Timestamp finished_at = 10;
+}
+
+// SimulationRunResult is a run together with the summary it produced.
+//
+// Every field is what the engine measured during that run:
+//   - plan:        the derived workload chain (users → DAU → requests/day →
+//                  average RPS → peak RPS).
+//   - metrics:     throughput, latency (avg/p50/p95/p99/max), error and
+//                  timeout rates, and the per-component report.
+//   - failures:    the per-request failure log.
+//   - summary:     engine counters and the stop reason.
+//   - diagnosis:   flagged bottlenecks with their computed reasons.
+//   - capacity:    per-component modeled ceilings, utilization, headroom.
+//   - cost:        the monthly estimate and its assumption trail.
+//
+// Absent fields mean the run did not produce them (for example a failed run
+// has metrics only if it got far enough); nothing is fabricated on read.
+message SimulationRunResult {
+  SimulationRunRecord run = 1;
+  LoadPlan plan = 2;
+  SystemMetrics metrics = 3;
+  repeated FailureRecord failures = 4;
+  RunSummary summary = 5;
+  Diagnosis diagnosis = 6;
+  repeated CapacityReport capacity = 7;
+  CostEstimate cost = 8;
+}
+
+// CapacityReportList is the stored form of a run's capacity reports. A
+// repeated field needs a message to be serialized on its own, and giving
+// storage its own container keeps the persisted shape independent of any
+// request/response message.
+message CapacityReportList {
+  repeated CapacityReport reports = 1;
+}
+
+// FailureRecordList is the stored form of a run's per-request failures.
+message FailureRecordList {
+  repeated FailureRecord failures = 1;
+}
+
+// ExecuteSimulationRequest runs a stored architecture version under a stored
+// workload and persists the outcome.
+message ExecuteSimulationRequest {
+  string architecture_version_id = 1;
+  string workload_id = 2;
+  // options carries the run configuration: seed, horizon, failures, and
+  // retry/timeout behavior. The architecture and workload are NOT part of
+  // it — they come from storage, so a run can never be persisted against a
+  // document different from the one it executed.
+  SimulationOptions options = 3;
+}
+
+message ExecuteSimulationResponse {
+  SimulationRunResult result = 1;
+}
+
+message GetSimulationRunRequest {
+  string id = 1;
+}
+
+message GetSimulationRunResponse {
+  SimulationRunResult result = 1;
+}
+
+// ListSimulationRunsRequest lists run history. Exactly one selector is used:
+// architecture_version_id (one version's runs) or project_id (every run under
+// a project, across architectures and versions).
+message ListSimulationRunsRequest {
+  string architecture_version_id = 1;
+  string project_id = 2;
+}
+
+message ListSimulationRunsResponse {
+  // runs are ordered newest first. Their result summaries are not included
+  // here; fetch one with GetSimulationRun.
+  repeated SimulationRunRecord runs = 1;
+}
+
+// WorkspaceService persists LOADLINE workspaces and runs simulations against
+// stored documents. It owns no simulation behavior: it loads an architecture
+// version and a workload, hands them to the same in-memory engine
+// SimulationService uses, and stores what the engine returned.
+service WorkspaceService {  // --- Projects -----------------------------------------------------------
+  rpc CreateProject(CreateProjectRequest) returns (CreateProjectResponse);
+  rpc GetProject(GetProjectRequest) returns (GetProjectResponse);
+  rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse);
+  rpc UpdateProject(UpdateProjectRequest) returns (UpdateProjectResponse);
+  rpc DeleteProject(DeleteProjectRequest) returns (DeleteProjectResponse);
+
+  // --- Architectures ------------------------------------------------------
+  // Create an architecture and its first version in one transaction.
+  rpc CreateArchitecture(CreateArchitectureRequest) returns (CreateArchitectureResponse);
+  rpc GetArchitecture(GetArchitectureRequest) returns (GetArchitectureResponse);
+  rpc ListArchitectures(ListArchitecturesRequest) returns (ListArchitecturesResponse);
+  rpc UpdateArchitecture(UpdateArchitectureRequest) returns (UpdateArchitectureResponse);
+  rpc DeleteArchitecture(DeleteArchitectureRequest) returns (DeleteArchitectureResponse);
+
+  // --- Architecture versions (immutable) ----------------------------------
+  rpc CreateArchitectureVersion(CreateArchitectureVersionRequest) returns (CreateArchitectureVersionResponse);
+  rpc GetArchitectureVersion(GetArchitectureVersionRequest) returns (GetArchitectureVersionResponse);
+  rpc ListArchitectureVersions(ListArchitectureVersionsRequest) returns (ListArchitectureVersionsResponse);
+
+  // --- Workloads ----------------------------------------------------------
+  rpc CreateWorkload(CreateWorkloadRequest) returns (CreateWorkloadResponse);
+  rpc GetWorkload(GetWorkloadRequest) returns (GetWorkloadResponse);
+  rpc ListWorkloads(ListWorkloadsRequest) returns (ListWorkloadsResponse);
+  rpc UpdateWorkload(UpdateWorkloadRequest) returns (UpdateWorkloadResponse);
+  rpc DeleteWorkload(DeleteWorkloadRequest) returns (DeleteWorkloadResponse);
+
+  // --- Simulation runs ----------------------------------------------------
+  // Execute a stored version + workload on the simulation engine and persist
+  // the run with its result summary in one transaction.
+  rpc ExecuteSimulation(ExecuteSimulationRequest) returns (ExecuteSimulationResponse);
+  rpc GetSimulationRun(GetSimulationRunRequest) returns (GetSimulationRunResponse);
+  rpc ListSimulationRuns(ListSimulationRunsRequest) returns (ListSimulationRunsResponse);
+}
