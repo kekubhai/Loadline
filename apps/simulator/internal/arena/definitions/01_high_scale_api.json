@@ -1,0 +1,46 @@
+{
+  "slug": "high-scale-api",
+  "version": 1,
+  "name": "Design a High-Scale API",
+  "description": "A read-heavy public API must sustain roughly 10,000 peak RPS while keeping tail latency low and infrastructure cost within budget. There is no failure injected: this challenge measures how much headroom a straightforward API tier + database design actually has.",
+  "difficulty": "advanced",
+  "category": "api",
+  "status": "active",
+  "workload": {
+    "totalUsers": 5000000,
+    "dau": 1000000,
+    "requestsPerUserPerDay": 108,
+    "peakMultiplier": 8,
+    "readWriteRatio": 4,
+    "payloadBytes": 2048,
+    "durationMs": 60000
+  },
+  "constraints": {
+    "targetThroughputRps": 8000,
+    "targetP95Ms": 120,
+    "targetP99Ms": 250,
+    "targetErrorRate": 0.01,
+    "monthlyBudgetUsd": 3000
+  },
+  "requirements": {
+    "requiredKinds": [
+      { "kind": "api_server", "min": 1 },
+      { "kind": "database", "min": 1 }
+    ]
+  },
+  "failures": [],
+  "scoring": {
+    "throughput": 0.35,
+    "latency": 0.3,
+    "reliability": 0.2,
+    "cost": 0.15,
+    "failureRecovery": 0
+  },
+  "seed": 1001,
+  "run": {
+    "maxRetries": 2,
+    "backoffBaseMs": 5,
+    "timeoutMs": 50,
+    "windowMs": 1000
+  }
+}

@@ -79,24 +79,56 @@ func main() {
 	)
 	mux.Handle(simPath, simHandler)
 
+	// Repositories are shared by the persistence-backed services and are
+	// nil when no database is configured.
+	var (
+		projects      repositories.ProjectRepository
+		architectures repositories.ArchitectureRepository
+		workloads     repositories.WorkloadRepository
+		simulations   repositories.SimulationRepository
+		challenges    repositories.ChallengeRepository
+	)
+	if database != nil {
+		projects = repositories.NewProjectRepository(database)
+		architectures = repositories.NewArchitectureRepository(database)
+		workloads = repositories.NewWorkloadRepository(database)
+		simulations = repositories.NewSimulationRepository(database)
+		challenges = repositories.NewChallengeRepository(database)
+		log.Printf("workspace persistence enabled (%s configured)", db.EnvDatabaseURL)
+	} else {
+		log.Printf("workspace persistence disabled: %s is not set", db.EnvDatabaseURL)
+	}
+
 	// WorkspaceService: persisted documents, only when a database is
 	// configured. Registering handlers without a database would turn every
 	// workspace call into an internal error, so it is better to leave the
 	// routes absent and say so in the logs and on /healthz.
 	if database != nil {
 		workspacePath, workspaceHandler := lv1connect.NewWorkspaceServiceHandler(
-			loadlinev1.NewWorkspaceService(
-				repositories.NewProjectRepository(database),
-				repositories.NewArchitectureRepository(database),
-				repositories.NewWorkloadRepository(database),
-				repositories.NewSimulationRepository(database),
-			),
+			loadlinev1.NewWorkspaceService(projects, architectures, workloads, simulations),
 			connect.WithCompressMinBytes(1024),
 		)
 		mux.Handle(workspacePath, workspaceHandler)
-		log.Printf("workspace persistence enabled (%s configured)", db.EnvDatabaseURL)
-	} else {
-		log.Printf("workspace persistence disabled: %s is not set", db.EnvDatabaseURL)
+	}
+
+	// ArenaService: challenge definitions are served from the embedded
+	// version-controlled files, so browsing Arena works without a database;
+	// submissions and leaderboards need one. Registration is therefore
+	// unconditional, with a clear precondition error when persistence is
+	// unavailable.
+	arenaPath, arenaHandler := lv1connect.NewArenaServiceHandler(
+		loadlinev1.NewArenaService(challenges, architectures, simulations),
+		connect.WithCompressMinBytes(1024),
+	)
+	mux.Handle(arenaPath, arenaHandler)
+
+	// Project the canonical challenge definitions into the database so
+	// submissions can reference them. Idempotent and safe to run every boot.
+	if database != nil {
+		if err := loadlinev1.SyncChallenges(ctx, challenges); err != nil {
+			log.Fatalf("loadline-server: sync challenges: %v", err)
+		}
+		log.Printf("arena: challenge definitions synced")
 	}
 
 	mux.HandleFunc("/healthz", healthHandler(database))

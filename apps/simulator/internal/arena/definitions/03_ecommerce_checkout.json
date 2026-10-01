@@ -1,0 +1,54 @@
+{
+  "slug": "ecommerce-checkout",
+  "version": 1,
+  "name": "E-Commerce Checkout",
+  "description": "A write-heavy checkout path at roughly 5,000 peak RPS. The database is injected with a latency spike, so synchronous order writes must be buffered rather than made the critical path. A queue is required: checkout must survive a slow primary.",
+  "difficulty": "intermediate",
+  "category": "ecommerce",
+  "status": "active",
+  "workload": {
+    "totalUsers": 2000000,
+    "dau": 200000,
+    "requestsPerUserPerDay": 360,
+    "peakMultiplier": 6,
+    "readWriteRatio": 2,
+    "payloadBytes": 1024,
+    "durationMs": 60000
+  },
+  "constraints": {
+    "targetThroughputRps": 4000,
+    "targetP95Ms": 200,
+    "targetP99Ms": 400,
+    "targetErrorRate": 0.02,
+    "monthlyBudgetUsd": 2500
+  },
+  "requirements": {
+    "requiredKinds": [
+      { "kind": "queue", "min": 1 },
+      { "kind": "database", "min": 1 }
+    ]
+  },
+  "failures": [
+    {
+      "targetKind": "database",
+      "type": "increased_latency",
+      "startMs": 20000,
+      "durationMs": 15000,
+      "addedLatencyMs": 40
+    }
+  ],
+  "scoring": {
+    "throughput": 0.25,
+    "latency": 0.25,
+    "reliability": 0.25,
+    "cost": 0.1,
+    "failureRecovery": 0.15
+  },
+  "seed": 3003,
+  "run": {
+    "maxRetries": 2,
+    "backoffBaseMs": 5,
+    "timeoutMs": 50,
+    "windowMs": 1000
+  }
+}

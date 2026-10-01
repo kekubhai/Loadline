@@ -1,0 +1,62 @@
+{
+  "slug": "distributed-failure",
+  "version": 1,
+  "name": "Distributed Failure",
+  "description": "The hardest benchmark: roughly 50,000 peak RPS with BOTH a cache outage and a database latency spike overlapping mid-run. Failure recovery carries the largest weight. The architecture must degrade gracefully under two simultaneous faults and still stay within budget.",
+  "difficulty": "expert",
+  "category": "distributed",
+  "status": "active",
+  "workload": {
+    "totalUsers": 10000000,
+    "dau": 2000000,
+    "requestsPerUserPerDay": 270,
+    "peakMultiplier": 8,
+    "readWriteRatio": 4,
+    "payloadBytes": 4096,
+    "durationMs": 60000
+  },
+  "constraints": {
+    "targetThroughputRps": 40000,
+    "targetP95Ms": 180,
+    "targetP99Ms": 350,
+    "targetErrorRate": 0.02,
+    "monthlyBudgetUsd": 7000
+  },
+  "requirements": {
+    "requiredKinds": [
+      { "kind": "cache", "min": 1 },
+      { "kind": "database", "min": 1 },
+      { "kind": "worker", "min": 1 }
+    ]
+  },
+  "failures": [
+    {
+      "targetKind": "cache",
+      "type": "crash",
+      "startMs": 20000,
+      "durationMs": 20000,
+      "passThrough": true
+    },
+    {
+      "targetKind": "database",
+      "type": "increased_latency",
+      "startMs": 25000,
+      "durationMs": 15000,
+      "addedLatencyMs": 50
+    }
+  ],
+  "scoring": {
+    "throughput": 0.25,
+    "latency": 0.2,
+    "reliability": 0.2,
+    "cost": 0.1,
+    "failureRecovery": 0.25
+  },
+  "seed": 5005,
+  "run": {
+    "maxRetries": 2,
+    "backoffBaseMs": 5,
+    "timeoutMs": 50,
+    "windowMs": 1000
+  }
+}

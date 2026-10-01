@@ -224,6 +224,145 @@ type SimulationResult struct {
 	CreatedAt       time.Time
 }
 
+// ChallengeStatus is the lifecycle of an Arena challenge.
+type ChallengeStatus string
+
+const (
+	ChallengeDraft  ChallengeStatus = "draft"
+	ChallengeActive ChallengeStatus = "active"
+	ChallengeClosed ChallengeStatus = "closed"
+)
+
+// Valid reports whether the status is one the schema accepts.
+func (s ChallengeStatus) Valid() bool {
+	switch s {
+	case ChallengeDraft, ChallengeActive, ChallengeClosed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Challenge is one versioned Arena benchmark. It is a projection of the
+// version-controlled definition files embedded in the server; the API layer
+// refreshes it at boot. All configuration payloads are protojson of the API
+// messages, exactly as the simulation result payloads are.
+type Challenge struct {
+	ID          string
+	Slug        string
+	Version     int
+	Name        string
+	Description string
+	Difficulty  string
+	Category    string
+	Status      ChallengeStatus
+
+	// Definition is the canonical challenge document, stored verbatim (the
+	// same JSON as the embedded file). The server reconstructs the
+	// benchmark from it, so a stored version is self-describing and pinned.
+	Definition json.RawMessage
+
+	WorkloadConfig   json.RawMessage
+	Constraints      json.RawMessage
+	ScoringConfig    json.RawMessage
+	FailureScenarios json.RawMessage
+	Requirements     json.RawMessage
+
+	Seed       uint64
+	DurationMS float64
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
+// Validate reports whether the challenge can be persisted.
+func (c Challenge) Validate() error {
+	if strings.TrimSpace(c.Slug) == "" {
+		return fmt.Errorf("workspace: challenge: slug is required")
+	}
+	if c.Version <= 0 {
+		return fmt.Errorf("workspace: challenge: version must be > 0")
+	}
+	if strings.TrimSpace(c.Name) == "" {
+		return fmt.Errorf("workspace: challenge: name is required")
+	}
+	if !c.Status.Valid() {
+		return fmt.Errorf("workspace: challenge: unknown status %q", c.Status)
+	}
+	if c.Seed == 0 || c.Seed > MaxSeed {
+		return fmt.Errorf("workspace: challenge: seed must be in (0, %d]", uint64(MaxSeed))
+	}
+	if c.DurationMS < 0 || math.IsNaN(c.DurationMS) || math.IsInf(c.DurationMS, 0) {
+		return fmt.Errorf("workspace: challenge: duration must be finite and >= 0")
+	}
+	return nil
+}
+
+// SubmissionStatus is the outcome of a benchmark execution.
+type SubmissionStatus string
+
+const (
+	SubmissionCompleted SubmissionStatus = "completed"
+	SubmissionFailed    SubmissionStatus = "failed"
+)
+
+// Valid reports whether the status is one the schema accepts.
+func (s SubmissionStatus) Valid() bool {
+	return s == SubmissionCompleted || s == SubmissionFailed
+}
+
+// ChallengeSubmission is one benchmarked architecture. Every metric and the
+// score are server-computed; nothing here is accepted from a client.
+//
+// Rank is intentionally absent: the authoritative leaderboard is derived by
+// query, so a stored rank could never go stale.
+type ChallengeSubmission struct {
+	ID               string
+	ChallengeID      string
+	ChallengeSlug    string
+	ChallengeVersion int
+	DisplayName      string
+
+	ArchitectureVersionID string
+	// SimulationRunID is empty when the benchmark run row no longer exists.
+	SimulationRunID string
+	Status          SubmissionStatus
+	Score           float64
+
+	Metrics        json.RawMessage
+	Plan           json.RawMessage
+	Bottlenecks    json.RawMessage
+	Capacity       json.RawMessage
+	Cost           json.RawMessage
+	ScoreBreakdown json.RawMessage
+
+	Seed        uint64
+	Error       string
+	SubmittedAt time.Time
+}
+
+// Validate reports whether the submission can be persisted.
+func (s ChallengeSubmission) Validate() error {
+	if err := ValidateID(s.ChallengeID); err != nil {
+		return fmt.Errorf("workspace: submission: challenge id: %w", err)
+	}
+	if err := ValidateID(s.ArchitectureVersionID); err != nil {
+		return fmt.Errorf("workspace: submission: architecture version id: %w", err)
+	}
+	if strings.TrimSpace(s.DisplayName) == "" {
+		return fmt.Errorf("workspace: submission: display name is required")
+	}
+	if !s.Status.Valid() {
+		return fmt.Errorf("workspace: submission: unknown status %q", s.Status)
+	}
+	if s.Seed > MaxSeed {
+		return fmt.Errorf("workspace: submission: seed exceeds the storable maximum")
+	}
+	if math.IsNaN(s.Score) || math.IsInf(s.Score, 0) {
+		return fmt.Errorf("workspace: submission: score must be finite")
+	}
+	return nil
+}
+
 // validateName enforces the non-empty-name rule the schema also enforces.
 func validateName(kind, name string) error {
 	if strings.TrimSpace(name) == "" {

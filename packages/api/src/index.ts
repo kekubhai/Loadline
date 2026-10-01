@@ -13,9 +13,11 @@ import { createConnectTransport } from "@connectrpc/connect-web";
 import { create as createMessage } from "@bufbuild/protobuf";
 import { SimulationService } from "./loadline/v1/simulation_pb";
 import { WorkspaceService } from "./loadline/v1/workspace_pb";
+import { ArenaService } from "./loadline/v1/arena_pb";
 
 export * from "./loadline/v1/simulation_pb";
 export * from "./loadline/v1/workspace_pb";
+export * from "./loadline/v1/arena_pb";
 export { createMessage as create };
 
 export interface LoadlineClientOptions {
@@ -35,8 +37,14 @@ export function createWorkspaceClient(opts: LoadlineClientOptions) {
   return createClient(WorkspaceService, createTransport(opts));
 }
 
+/** createArenaClient returns a typed ArenaService client. */
+export function createArenaClient(opts: LoadlineClientOptions) {
+  return createClient(ArenaService, createTransport(opts));
+}
+
 export type LoadlineClient = ReturnType<typeof createLoadlineClient>;
 export type WorkspaceClient = ReturnType<typeof createWorkspaceClient>;
+export type ArenaClient = ReturnType<typeof createArenaClient>;
 
 function createTransport(opts: LoadlineClientOptions) {
   return createConnectTransport({

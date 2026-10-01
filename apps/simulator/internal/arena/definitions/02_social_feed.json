@@ -1,0 +1,54 @@
+{
+  "slug": "social-feed",
+  "version": 1,
+  "name": "Build a Social Feed",
+  "description": "A 90/10 read-heavy feed at roughly 50,000 peak RPS. The benchmark injects a cache outage mid-run with pass-through to the origin: if the database cannot absorb the redirected reads, tail latency and errors will show it. Design the cache tier as a real dependency, not decoration.",
+  "difficulty": "expert",
+  "category": "social",
+  "status": "active",
+  "workload": {
+    "totalUsers": 20000000,
+    "dau": 2000000,
+    "requestsPerUserPerDay": 270,
+    "peakMultiplier": 8,
+    "readWriteRatio": 9,
+    "payloadBytes": 4096,
+    "durationMs": 60000
+  },
+  "constraints": {
+    "targetThroughputRps": 40000,
+    "targetP95Ms": 150,
+    "targetP99Ms": 300,
+    "targetErrorRate": 0.01,
+    "monthlyBudgetUsd": 5000
+  },
+  "requirements": {
+    "requiredKinds": [
+      { "kind": "cache", "min": 1 },
+      { "kind": "database", "min": 1 }
+    ]
+  },
+  "failures": [
+    {
+      "targetKind": "cache",
+      "type": "crash",
+      "startMs": 30000,
+      "durationMs": 20000,
+      "passThrough": true
+    }
+  ],
+  "scoring": {
+    "throughput": 0.3,
+    "latency": 0.25,
+    "reliability": 0.2,
+    "cost": 0.1,
+    "failureRecovery": 0.15
+  },
+  "seed": 2002,
+  "run": {
+    "maxRetries": 2,
+    "backoffBaseMs": 5,
+    "timeoutMs": 50,
+    "windowMs": 1000
+  }
+}

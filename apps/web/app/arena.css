@@ -1,0 +1,111 @@
+/* LOADLINE — Arena styles.
+   Restrained engineering-tool language: warm paper, thin rules, ink bars.
+   No neon, no gradients, no large cards. */
+
+.arena-blurb {
+  margin: 0;
+  max-width: 76ch;
+  color: var(--ink-2, #4a4640);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.arena-desc {
+  margin: 0 0 6px;
+  max-width: 76ch;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.arena-weights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.arena-weight {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.arena-weight-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-3, #6b665e);
+}
+
+.arena-weight-value {
+  font-family: var(--mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.arena-score {
+  font-family: var(--mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 26px;
+  letter-spacing: -0.02em;
+}
+
+.arena-score-max {
+  font-size: 12px;
+  color: var(--ink-3, #6b665e);
+}
+
+.arena-bar {
+  display: grid;
+  grid-template-columns: 120px 1fr 48px 52px;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 12px;
+}
+
+.arena-bar-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-3, #6b665e);
+}
+
+.arena-bar-track {
+  position: relative;
+  height: 8px;
+  background: var(--rule, #e6e1d7);
+  border: 1px solid var(--rule-strong, #d8d2c6);
+}
+
+.arena-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--ink, #23201c);
+}
+
+.arena-bar-value,
+.arena-bar-weight {
+  font-family: var(--mono, monospace);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.arena-bar-weight {
+  color: var(--ink-3, #6b665e);
+}
+
+.arena-why {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.arena-plus {
+  color: var(--ok, #2f6b3a);
+}
+
+.arena-minus {
+  color: var(--bad, #8a2b2b);
+}

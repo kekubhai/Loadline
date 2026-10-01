@@ -1,0 +1,54 @@
+{
+  "slug": "realtime-chat",
+  "version": 1,
+  "name": "Real-Time Chat",
+  "description": "A high-volume messaging backplane at roughly 100,000 peak RPS. A worker pool is required so message fan-out never blocks the request path. The benchmark crashes a worker mid-run: the queue must absorb the shock without dropping messages.",
+  "difficulty": "advanced",
+  "category": "realtime",
+  "status": "active",
+  "workload": {
+    "totalUsers": 10000000,
+    "dau": 1500000,
+    "requestsPerUserPerDay": 720,
+    "peakMultiplier": 8,
+    "readWriteRatio": 4,
+    "payloadBytes": 512,
+    "durationMs": 60000
+  },
+  "constraints": {
+    "targetThroughputRps": 80000,
+    "targetP95Ms": 100,
+    "targetP99Ms": 200,
+    "targetErrorRate": 0.02,
+    "monthlyBudgetUsd": 6000
+  },
+  "requirements": {
+    "requiredKinds": [
+      { "kind": "queue", "min": 1 },
+      { "kind": "worker", "min": 1 }
+    ]
+  },
+  "failures": [
+    {
+      "targetKind": "worker",
+      "type": "crash",
+      "startMs": 25000,
+      "durationMs": 20000,
+      "passThrough": false
+    }
+  ],
+  "scoring": {
+    "throughput": 0.3,
+    "latency": 0.25,
+    "reliability": 0.2,
+    "cost": 0.1,
+    "failureRecovery": 0.15
+  },
+  "seed": 4004,
+  "run": {
+    "maxRetries": 2,
+    "backoffBaseMs": 5,
+    "timeoutMs": 50,
+    "windowMs": 1000
+  }
+}

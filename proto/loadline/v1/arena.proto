@@ -1,0 +1,233 @@
+syntax = "proto3";
+
+package loadline.v1;
+
+import "google/protobuf/timestamp.proto";
+import "loadline/v1/simulation.proto";
+
+option go_package = "github.com/kekubhai/Loadline/apps/simulator/loadline/v1;loadlinev1";
+
+// ---------------------------------------------------------------------------
+// LOADLINE Arena — benchmark challenges and their leaderboards
+// ---------------------------------------------------------------------------
+//
+// Arena is server-authoritative. A challenge fully defines the benchmark:
+// workload, failure scenarios, requirements, targets, and scoring weights.
+// A client submits only:
+//
+//   challenge_slug
+//   architecture_version_id
+//   display_name
+//
+// The server validates the architecture against the challenge, runs the real
+// simulation engine with the challenge's workload, seed, and failures,
+// computes the score from measured results, and persists everything. Metrics,
+// score, and rank are NEVER accepted from the client.
+
+// ChallengeConstraints are the targets the score is measured against. A zero
+// field is "not assessed" for that dimension.
+message ChallengeConstraints {
+  double target_throughput_rps = 1;
+  double target_p95_ms = 2;
+  double target_p99_ms = 3;
+  double target_error_rate = 4;
+  double monthly_budget_usd = 5;
+}
+
+// FailureScenario is one standardized injection. target_kind names a generic
+// component kind ("cache"); the server resolves it to the submitted
+// architecture's component of that kind. type is one of the engine's failure
+// types: crash, increased_latency, increased_error_rate, network_failure.
+message FailureScenario {
+  string target_kind = 1;
+  string type = 2;
+  double start_ms = 3;
+  double duration_ms = 4;
+  double added_latency_ms = 5;
+  double error_rate = 6;
+  double packet_loss_rate = 7;
+  bool pass_through = 8;
+}
+
+// KindRequirement is a hard structural rule: at least min components of a
+// generic component kind.
+message KindRequirement {
+  string kind = 1;
+  int32 min = 2;
+}
+
+// ScoringWeights are the relative weights of the five score dimensions.
+message ScoringWeights {
+  double throughput = 1;
+  double latency = 2;
+  double reliability = 3;
+  double cost = 4;
+  double failure_recovery = 5;
+}
+
+// FailureScenarioList is the stored form of a challenge's failures. A
+// repeated field needs a message to be serialized on its own.
+message FailureScenarioList {
+  repeated FailureScenario failures = 1;
+}
+
+// KindRequirementList is the stored form of a challenge's requirements.
+message KindRequirementList {
+  repeated KindRequirement requirements = 1;
+}
+
+// ChallengeSummary is the list/card view of a challenge.
+message ChallengeSummary {
+  string slug = 1;
+  int32 version = 2;
+  string name = 3;
+  string description = 4;
+  // difficulty: beginner | intermediate | advanced | expert
+  string difficulty = 5;
+  // category: api | social | ecommerce | saas | realtime | distributed | cloud
+  string category = 6;
+  // status: draft | active | closed
+  string status = 7;
+  WorkloadSpec workload = 8;
+  ChallengeConstraints constraints = 9;
+  repeated FailureScenario failures = 10;
+}
+
+// Challenge is the full definition, including exactly how submissions are
+// evaluated. Nothing about the benchmark is hidden.
+message Challenge {
+  ChallengeSummary summary = 1;
+  repeated KindRequirement requirements = 2;
+  ScoringWeights scoring = 3;
+  // seed is the fixed benchmark seed; it is recorded on every submission.
+  uint64 seed = 4;
+  double duration_ms = 5;
+}
+
+message ListChallengesRequest {}
+
+message ListChallengesResponse {
+  // challenges are ordered by difficulty, then name.
+  repeated ChallengeSummary challenges = 1;
+}
+
+message GetChallengeRequest {
+  string slug = 1;
+}
+
+message GetChallengeResponse {
+  Challenge challenge = 1;
+}
+
+// SubmitChallengeRequest is ALL the client may send. There is deliberately no
+// seed, workload, score, rank, or metric field: the server owns the
+// benchmark.
+message SubmitChallengeRequest {
+  string challenge_slug = 1;
+  string architecture_version_id = 2;
+  string display_name = 3;
+}
+
+// ScoreComponent is one dimension of the score with its derivation.
+message ScoreComponent {
+  string name = 1;
+  double score = 2;
+  double weight = 3;
+  double weighted = 4;
+  string detail = 5;
+  repeated string evidence = 6;
+}
+
+// ScoreBreakdown is the full, explainable score.
+message ScoreBreakdown {
+  double score = 1;
+  repeated ScoreComponent components = 2;
+  repeated string positives = 3;
+  repeated string negatives = 4;
+}
+
+// Submission is one benchmarked architecture.
+message Submission {
+  string id = 1;
+  string challenge_slug = 2;
+  int32 challenge_version = 3;
+  string display_name = 4;
+  // status: completed | failed
+  string status = 5;
+  // score is 0 for a failed submission (which never ranks).
+  double score = 6;
+  // rank is derived from the leaderboard at read time (0 = unranked/failed).
+  int64 rank = 7;
+  LoadPlan plan = 8;
+  SystemMetrics metrics = 9;
+  Diagnosis diagnosis = 10;
+  repeated CapacityReport capacity = 11;
+  CostEstimate cost = 12;
+  ScoreBreakdown breakdown = 13;
+  uint64 seed = 14;
+  // error explains a failed benchmark; empty otherwise.
+  string error = 15;
+  google.protobuf.Timestamp submitted_at = 16;
+}
+
+message SubmitChallengeResponse {
+  Submission submission = 1;
+}
+
+message GetChallengeSubmissionRequest {
+  string id = 1;
+}
+
+message GetChallengeSubmissionResponse {
+  Submission submission = 1;
+}
+
+// LeaderboardEntry is one ranked submission. Only public benchmark data is
+// exposed: there is no identity beyond the display name.
+message LeaderboardEntry {
+  int64 rank = 1;
+  string submission_id = 2;
+  string display_name = 3;
+  double score = 4;
+  double throughput_rps = 5;
+  double p95_ms = 6;
+  double p99_ms = 7;
+  double error_rate = 8;
+  double monthly_cost_usd = 9;
+  bool cost_known = 10;
+  google.protobuf.Timestamp submitted_at = 11;
+}
+
+message GetChallengeLeaderboardRequest {
+  string slug = 1;
+  // version is the challenge version whose leaderboard is requested; 0 means
+  // the challenge's current version. Historical versions keep their own
+  // leaderboards, so an edited challenge never rewrites past results.
+  int32 version = 2;
+  // limit caps the rows returned; 0 uses the server default.
+  int32 limit = 3;
+  // recent orders by submission time (newest first) instead of score.
+  bool recent = 4;
+}
+
+message GetChallengeLeaderboardResponse {
+  string slug = 1;
+  int32 version = 2;
+  repeated LeaderboardEntry entries = 3;
+}
+
+// ArenaService is LOADLINE's benchmark API. It reuses the same simulation
+// engine as SimulationService and WorkspaceService; it owns no simulation
+// behavior, only benchmark orchestration and scoring.
+service ArenaService {
+  // List every embedded challenge.
+  rpc ListChallenges(ListChallengesRequest) returns (ListChallengesResponse);
+  // Fetch one challenge with its full evaluation rules.
+  rpc GetChallenge(GetChallengeRequest) returns (GetChallengeResponse);
+  // Benchmark a stored architecture version against a challenge.
+  rpc SubmitChallenge(SubmitChallengeRequest) returns (SubmitChallengeResponse);
+  // Fetch one submission by id.
+  rpc GetChallengeSubmission(GetChallengeSubmissionRequest) returns (GetChallengeSubmissionResponse);
+  // Fetch a challenge's leaderboard (score-ranked, or most recent).
+  rpc GetChallengeLeaderboard(GetChallengeLeaderboardRequest) returns (GetChallengeLeaderboardResponse);
+}
