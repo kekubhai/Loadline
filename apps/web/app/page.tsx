@@ -153,6 +153,8 @@ export default function Home() {
   );
   const [state, runDispatch] = useReducer(runReducer, initialRun);
   const [view, setView] = useState("architecture");
+  /** Arena challenge selected across canvas trips (ArenaView unmounts). */
+  const [arenaSlug, setArenaSlug] = useState("");
   const [catalog, setCatalog] = useState<CatalogService[] | null>(null);
   const [catalogError, setCatalogError] = useState("");
   /** Command palette (⌘/Ctrl+K). */
@@ -1010,7 +1012,9 @@ export default function Home() {
           </div>
           <ArenaView
             serverUrl={serverUrl}
-            onLoadWorkload={(w) => onPatchWorkload(w)}
+            initialSlug={arenaSlug}
+            onSelectChallenge={setArenaSlug}
+            onOpenCanvas={() => setView("architecture")}
             onNotice={setNotice}
           />
         </div>

@@ -2,7 +2,7 @@
   "slug": "realtime-chat",
   "version": 1,
   "name": "Real-Time Chat",
-  "description": "A high-volume messaging backplane at roughly 100,000 peak RPS. A worker pool is required so message fan-out never blocks the request path. The benchmark crashes a worker mid-run: the queue must absorb the shock without dropping messages.",
+  "description": "A real-time messaging backplane for a service with 10,000,000 registered users and 1,500,000 daily active users, with messages fanning out to devices worldwide. Traffic is bursty and continuous, and the platform owns several shared tiers. Build the messaging path so fan-out never blocks the request path, even while a shared tier is degraded.",
   "difficulty": "advanced",
   "category": "realtime",
   "status": "active",

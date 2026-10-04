@@ -2,7 +2,7 @@
   "slug": "ecommerce-checkout",
   "version": 1,
   "name": "E-Commerce Checkout",
-  "description": "A write-heavy checkout path at roughly 5,000 peak RPS. The database is injected with a latency spike, so synchronous order writes must be buffered rather than made the critical path. A queue is required: checkout must survive a slow primary.",
+  "description": "A checkout path for a marketplace with 2,000,000 registered users and 200,000 daily active users, processing paying customers across multiple regions. Order writes sit on the critical path and must never be dropped, even when a shared datastore slows down. Build checkout so shoppers keep moving and no order is lost.",
   "difficulty": "intermediate",
   "category": "ecommerce",
   "status": "active",

@@ -3,9 +3,16 @@
 /**
  * LOADLINE — Arena view.
  *
- * Browse standardized system-design challenges, read exactly how each one is
- * evaluated, build an architecture against it, submit it with only a display
- * name, and read the deterministic benchmark result and leaderboard.
+ * Browse standardized system-design challenges, read the problem statement,
+ * build an architecture for it on the canvas, submit that architecture with
+ * only a display name, and read the deterministic benchmark result and
+ * leaderboard.
+ *
+ * A challenge shows ONLY the problem idea — the business scale (registered
+ * users and daily active users) and the network it must serve. Targets,
+ * workload numbers, required components, failure scenarios, and scoring
+ * weights are deliberately hidden, so the user designs from the requirement
+ * rather than toward a metric.
  *
  * The benchmark is server-authoritative: this view sends ONLY
  * {challenge slug, stored architecture version id, display name}. The
@@ -22,7 +29,6 @@ import type {
   LeaderboardEntry,
   Project,
   Submission,
-  WorkloadSpec,
 } from "@loadline/api";
 import { f0, f1, f2, pct, price } from "./format";
 import { Badge, Button, EmptyState, Field, Input, Panel, Section, Select } from "./ui";
@@ -44,22 +50,24 @@ interface ArenaState {
   error: string;
 }
 
-const initialArena: ArenaState = {
-  challenges: [],
-  slug: "",
-  challenge: null,
-  leaderboard: [],
-  submission: null,
-  displayName: "",
-  projects: [],
-  architectures: [],
-  versions: [],
-  projectId: "",
-  architectureId: "",
-  versionId: "",
-  busy: "",
-  error: "",
-};
+function initialArena(slug: string): ArenaState {
+  return {
+    challenges: [],
+    slug,
+    challenge: null,
+    leaderboard: [],
+    submission: null,
+    displayName: "",
+    projects: [],
+    architectures: [],
+    versions: [],
+    projectId: "",
+    architectureId: "",
+    versionId: "",
+    busy: "",
+    error: "",
+  };
+}
 
 type ArenaAction =
   | { type: "busy"; what: string }
@@ -118,17 +126,23 @@ function reducer(s: ArenaState, a: ArenaAction): ArenaState {
 
 export function ArenaView({
   serverUrl,
-  onLoadWorkload,
+  initialSlug = "",
+  onSelectChallenge,
+  onOpenCanvas,
   onNotice,
 }: {
   serverUrl: string;
-  /** Load a challenge's standardized workload into the editor. */
-  onLoadWorkload: (workload: WorkloadSpec) => void;
+  /** Challenge selected before this view mounted (survives a canvas trip). */
+  initialSlug?: string;
+  /** Remember the selected challenge so it survives a trip to the canvas. */
+  onSelectChallenge?: (slug: string) => void;
+  /** Send the user to the canvas to build the selected challenge. */
+  onOpenCanvas: () => void;
   onNotice: (message: string) => void;
 }) {
   const arena = useMemo(() => createArenaClient({ baseUrl: serverUrl }), [serverUrl]);
   const workspace = useMemo(() => createWorkspaceClient({ baseUrl: serverUrl }), [serverUrl]);
-  const [s, d] = useReducer(reducer, initialArena);
+  const [s, d] = useReducer(reducer, initialSlug, initialArena);
 
   const call = useCallback(
     async <T,>(what: string, fn: () => Promise<T>): Promise<T | null> => {
@@ -251,11 +265,12 @@ export function ArenaView({
         </header>
         <div className="panel-body">
           <p className="arena-blurb">
-            Standardized system-design benchmarks. Pick a challenge, read exactly
-            how it is evaluated, build an architecture in the editor, then submit
-            it with only a display name. LOADLINE supplies the workload, runs the
-            real simulation engine, and computes a deterministic score — the
-            client cannot supply a metric, score, or rank.
+            Standardized system-design benchmarks. Pick a challenge, read its
+            problem statement, then build an architecture for it on the canvas
+            and submit it with only a display name. LOADLINE supplies the
+            workload, runs the real simulation engine, and computes a
+            deterministic score — the client cannot supply a metric, score, or
+            rank.
           </p>
         </div>
       </div>
@@ -274,13 +289,14 @@ export function ArenaView({
                   <button
                     type="button"
                     className="ws-row-main"
-                    onClick={() => d({ type: "select", slug: c.slug })}
+                    onClick={() => {
+                      d({ type: "select", slug: c.slug });
+                      onSelectChallenge?.(c.slug);
+                    }}
                   >
                     <span className="ws-row-name">{c.name}</span>
                     <span className="ws-row-meta">
-                      {c.difficulty} · {c.category} ·{" "}
-                      {c.constraints ? `p99 ≤ ${f0(c.constraints.targetP99Ms)}ms` : ""} ·{" "}
-                      {c.constraints ? price(c.constraints.monthlyBudgetUsd) : ""}
+                      {c.difficulty} · {c.category}
                     </span>
                   </button>
                 </li>
@@ -290,94 +306,32 @@ export function ArenaView({
         </Panel>
 
         {/* ------------------------------------------------- challenge detail */}
-        <Panel title="Benchmark rules" tag={ch ? `${ch.summary?.slug} v${ch.summary?.version}` : "select a challenge"}>
+        <Panel title="The challenge" tag={ch ? `${ch.summary?.slug} v${ch.summary?.version}` : "select a challenge"}>
           {!ch ? (
-            <EmptyState>select a challenge to see its workload, targets, failures, and scoring.</EmptyState>
+            <EmptyState>select a challenge to read the problem.</EmptyState>
           ) : (
             <div className="ws-detail">
-              <p className="arena-desc">{ch.summary?.description}</p>
               <div className="ws-detail-head">
                 <Badge tone={toneForDifficulty(ch.summary?.difficulty ?? "")}>
                   {ch.summary?.difficulty}
                 </Badge>
-                <span className="ws-row-meta">
-                  {ch.summary?.category} · seed {String(ch.seed)} · horizon {f0(ch.durationMs)} ms
-                </span>
+                <span className="ws-row-meta">{ch.summary?.category}</span>
               </div>
-
-              {ch.summary?.workload && (
-                <Section label="standardized workload (server-supplied)">
-                  <div className="ws-facts">
-                    <Fact label="dau" value={f0(ch.summary.workload.dau)} />
-                    <Fact label="reqs/user/day" value={f1(ch.summary.workload.requestsPerUserPerDay)} />
-                    <Fact label="peak x" value={f1(ch.summary.workload.peakMultiplier)} />
-                    <Fact label="read:write" value={f1(ch.summary.workload.readWriteRatio)} />
-                  </div>
-                </Section>
-              )}
-
-              <Section label="targets">
-                <div className="ws-facts">
-                  <Fact label="throughput" value={`${f0(ch.summary?.constraints?.targetThroughputRps ?? 0)} rps`} />
-                  <Fact label="p95" value={`${f0(ch.summary?.constraints?.targetP95Ms ?? 0)} ms`} />
-                  <Fact label="p99" value={`${f0(ch.summary?.constraints?.targetP99Ms ?? 0)} ms`} />
-                  <Fact label="error rate" value={pct(ch.summary?.constraints?.targetErrorRate ?? 0)} />
-                  <Fact label="budget" value={price(ch.summary?.constraints?.monthlyBudgetUsd ?? 0)} />
-                </div>
-              </Section>
-
-              <Section label="required components">
-                {ch.requirements.length === 0 ? (
-                  <EmptyState>none beyond a valid architecture.</EmptyState>
-                ) : (
-                  <div className="ws-facts">
-                    {ch.requirements.map((r) => (
-                      <Fact key={r.kind} label={r.kind} value={`≥ ${r.min}`} />
-                    ))}
-                  </div>
-                )}
-              </Section>
-
-              <Section label="failure scenarios (injected by the server)">
-                {(ch.summary?.failures ?? []).length === 0 ? (
-                  <EmptyState>none — a pure performance benchmark.</EmptyState>
-                ) : (
-                  <ul className="ws-list">
-                    {(ch.summary?.failures ?? []).map((f, i) => (
-                      <li key={i} className="ws-row">
-                        <span className="ws-row-main">
-                          <span className="ws-row-name">
-                            {f.type.replace(/_/g, " ")} · {f.targetKind}
-                          </span>
-                          <span className="ws-row-meta">
-                            t={f0(f.startMs)}ms for {f0(f.durationMs)}ms
-                            {f.passThrough ? " · pass-through" : ""}
-                          </span>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </Section>
-
-              <Section label="scoring weights">
-                <div className="arena-weights">
-                  <Weight label="throughput" value={ch.scoring?.throughput ?? 0} />
-                  <Weight label="latency" value={ch.scoring?.latency ?? 0} />
-                  <Weight label="reliability" value={ch.scoring?.reliability ?? 0} />
-                  <Weight label="cost" value={ch.scoring?.cost ?? 0} />
-                  <Weight label="failure recovery" value={ch.scoring?.failureRecovery ?? 0} />
-                </div>
-              </Section>
-
+              <p className="arena-desc">{ch.summary?.description}</p>
+              <p className="arena-blurb">
+                That is the whole brief. No targets, no workload numbers, no
+                component list, no failure list — design the architecture from
+                the problem, then submit it to be benchmarked.
+              </p>
               <Button
                 onClick={() => {
-                  if (!ch.summary?.workload) return;
-                  onLoadWorkload(ch.summary.workload);
-                  onNotice(`loaded ${ch.summary.name} workload into the editor — build, save, then submit`);
+                  onOpenCanvas();
+                  onNotice(
+                    `building ${ch.summary?.name ?? "challenge"} — design it on the canvas, save it, then return to Arena to submit`,
+                  );
                 }}
               >
-                build this architecture
+                start building →
               </Button>
             </div>
           )}
@@ -541,15 +495,6 @@ function Fact({ label, value }: { label: string; value: string }) {
     <div className="ws-fact">
       <span className="ws-fact-label">{label}</span>
       <span className="ws-fact-value">{value}</span>
-    </div>
-  );
-}
-
-function Weight({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="arena-weight">
-      <span className="arena-weight-label">{label}</span>
-      <span className="arena-weight-value">{f2(value)}</span>
     </div>
   );
 }

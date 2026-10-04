@@ -2,7 +2,7 @@
   "slug": "high-scale-api",
   "version": 1,
   "name": "Design a High-Scale API",
-  "description": "A read-heavy public API must sustain roughly 10,000 peak RPS while keeping tail latency low and infrastructure cost within budget. There is no failure injected: this challenge measures how much headroom a straightforward API tier + database design actually has.",
+  "description": "A public, read-heavy API for a service with 5,000,000 registered users and 1,000,000 daily active users. Clients are spread across North America, Europe, and Asia, so requests arrive continuously and concentrate around regional peaks. Build the backend you would ship to keep this API fast and affordable for every one of those users through its busiest hour.",
   "difficulty": "advanced",
   "category": "api",
   "status": "active",

@@ -1,10 +1,10 @@
 /**
  * ArenaView tests — the benchmark workflow inside the component: browse
- * challenges, read the evaluation rules, load the challenge workload into
- * the editor, submit a stored architecture version, and render the score
- * breakdown + leaderboard. The Connect clients are mocked; the real
- * transport, engine, and scoring are covered by the Go tests and the
- * cross-stack e2e.
+ * challenges, read only the problem statement (no targets, components,
+ * failures, or scoring), open the canvas to build, submit a stored
+ * architecture version, and render the score breakdown + leaderboard. The
+ * Connect clients are mocked; the real transport, engine, and scoring are
+ * covered by the Go tests and the cross-stack e2e.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
@@ -53,7 +53,8 @@ const summary = create(ChallengeSummarySchema, {
   slug: "social-feed",
   version: 1,
   name: "Build a Social Feed",
-  description: "A 90/10 read-heavy feed with a cache outage.",
+  description:
+    "A social feed for 20,000,000 registered users and 2,000,000 daily active users, served globally.",
   difficulty: "expert",
   category: "social",
   status: "active",
@@ -185,10 +186,18 @@ function renderView() {
   const ws = mockWorkspace();
   arenaFactory = () => arena;
   workspaceFactory = () => ws;
-  const onLoadWorkload = vi.fn();
+  const onSelectChallenge = vi.fn();
+  const onOpenCanvas = vi.fn();
   const onNotice = vi.fn();
-  render(<ArenaView serverUrl="http://test:8080" onLoadWorkload={onLoadWorkload} onNotice={onNotice} />);
-  return { arena, ws, onLoadWorkload, onNotice };
+  render(
+    <ArenaView
+      serverUrl="http://test:8080"
+      onSelectChallenge={onSelectChallenge}
+      onOpenCanvas={onOpenCanvas}
+      onNotice={onNotice}
+    />,
+  );
+  return { arena, ws, onSelectChallenge, onOpenCanvas, onNotice };
 }
 
 beforeEach(() => {
@@ -199,7 +208,7 @@ beforeEach(() => {
 /* ---------------------------------------------------------------- tests -- */
 
 describe("ArenaView", () => {
-  it("lists challenges and shows how the selected one is evaluated", async () => {
+  it("shows only the selected challenge's problem statement", async () => {
     const user = userEvent.setup();
     renderView();
 
@@ -208,25 +217,30 @@ describe("ArenaView", () => {
 
     await user.click(screen.getByText("Build a Social Feed"));
 
-    // Targets, required components, failure scenario, and weights are public.
-    expect(await screen.findByText("Benchmark rules")).toBeInTheDocument();
+    // The idea is public: the problem statement with its scale.
+    expect(await screen.findByText("The challenge")).toBeInTheDocument();
+    expect(await screen.findByText(/20,000,000 registered users/)).toBeInTheDocument();
     expect(await screen.findByText("expert")).toBeInTheDocument();
-    expect(await screen.findByText(/crash · cache/)).toBeInTheDocument();
-    expect(await screen.findByText("failure recovery")).toBeInTheDocument();
-    expect((await screen.findAllByText("≥ 1")).length).toBeGreaterThan(0);
+
+    // No hints: targets, required components, failure scenarios, and
+    // scoring weights stay server-side.
+    expect(screen.queryByText("Benchmark rules")).not.toBeInTheDocument();
+    expect(screen.queryByText(/crash · cache/)).not.toBeInTheDocument();
+    expect(screen.queryByText("failure recovery")).not.toBeInTheDocument();
+    expect(screen.queryByText("required components")).not.toBeInTheDocument();
+    expect(screen.queryByText("targets")).not.toBeInTheDocument();
+    expect(screen.queryByText("≥ 1")).not.toBeInTheDocument();
   });
 
-  it("loads the challenge workload into the editor", async () => {
+  it("sends the user to the canvas to build", async () => {
     const user = userEvent.setup();
-    const { onLoadWorkload } = renderView();
+    const { onOpenCanvas, onSelectChallenge } = renderView();
 
     await user.click(await screen.findByText("Build a Social Feed"));
-    await user.click(await screen.findByText("build this architecture"));
+    expect(onSelectChallenge).toHaveBeenCalledWith("social-feed");
 
-    expect(onLoadWorkload).toHaveBeenCalledTimes(1);
-    const passed = onLoadWorkload.mock.calls[0][0];
-    expect(passed.dau).toBe(2_000_000n);
-    expect(passed.peakMultiplier).toBe(8);
+    await user.click(await screen.findByText("start building →"));
+    expect(onOpenCanvas).toHaveBeenCalledTimes(1);
   });
 
   it("submits a stored version and renders the score, breakdown, and leaderboard", async () => {

@@ -2,7 +2,7 @@
   "slug": "distributed-failure",
   "version": 1,
   "name": "Distributed Failure",
-  "description": "The hardest benchmark: roughly 50,000 peak RPS with BOTH a cache outage and a database latency spike overlapping mid-run. Failure recovery carries the largest weight. The architecture must degrade gracefully under two simultaneous faults and still stay within budget.",
+  "description": "A global product with 10,000,000 registered users and 2,000,000 daily active users, spanning many regions on a small set of shared backend tiers. Because those tiers are shared, a fault in one can cascade into the others. Build the architecture that keeps serving all daily users and degrades gracefully when several dependencies fail at once.",
   "difficulty": "expert",
   "category": "distributed",
   "status": "active",
