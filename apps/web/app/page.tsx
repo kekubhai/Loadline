@@ -26,11 +26,13 @@ import {
 } from "react";
 import {
   ComponentKind,
+  createArenaClient,
   createLoadlineClient,
 } from "@loadline/api";
 import type {
   Architecture,
   CatalogService,
+  ChallengeSummary,
   Failure,
   SimulationOptions,
   WorkloadSpec,
@@ -51,6 +53,7 @@ import { FailurePanel } from "../components/failurepanel";
 import { ComparisonView } from "../components/comparisonview";
 import { WorkspaceView } from "../components/workspaceview";
 import { ArenaView } from "../components/arenaview";
+import { ArenaSubmit } from "../components/arenasubmit";
 import { ExploreGallery } from "../components/exploregallery";
 import {
   BottleneckPanel,
@@ -155,6 +158,8 @@ export default function Home() {
   const [view, setView] = useState("architecture");
   /** Arena challenge selected across canvas trips (ArenaView unmounts). */
   const [arenaSlug, setArenaSlug] = useState("");
+  /** The selected challenge's brief, shown above the canvas while building. */
+  const [arenaChallenge, setArenaChallenge] = useState<ChallengeSummary | null>(null);
   const [catalog, setCatalog] = useState<CatalogService[] | null>(null);
   const [catalogError, setCatalogError] = useState("");
   /** Command palette (⌘/Ctrl+K). */
@@ -167,6 +172,10 @@ export default function Home() {
 
   const client = useMemo(
     () => createLoadlineClient({ baseUrl: serverUrl }),
+    [serverUrl],
+  );
+  const arenaClient = useMemo(
+    () => createArenaClient({ baseUrl: serverUrl }),
     [serverUrl],
   );
 
@@ -410,6 +419,30 @@ export default function Home() {
     return () => window.clearTimeout(t);
   }, [notice]);
 
+  // The selected challenge's brief. Kept in page state so the arena build
+  // page can show the problem statement above the canvas on every render.
+  useEffect(() => {
+    if (!arenaSlug) {
+      setArenaChallenge(null);
+      return;
+    }
+    let alive = true;
+    arenaClient
+      .getChallenge({ slug: arenaSlug })
+      .then((res) => {
+        if (alive) setArenaChallenge(res.challenge?.summary ?? null);
+      })
+      .catch((e: unknown) => {
+        if (alive) {
+          setArenaChallenge(null);
+          setNotice(`challenge unavailable — ${e instanceof Error ? e.message : String(e)}`);
+        }
+      });
+    return () => {
+      alive = false;
+    };
+  }, [arenaClient, arenaSlug]);
+
   /* ------------------------------------------------------------- running -- */
 
   const baselineIdRef = useRef<string | null>(null);
@@ -544,9 +577,15 @@ export default function Home() {
    */
   const runSimulation = useCallback(() => {
     if (warnings.length > 0 || consoleHandles.current?.isBusy()) return;
+    // In the arena workspace the console already lives on this page, so a
+    // run starts in place instead of switching to the simulation view.
+    if (view === "arena" && arenaSlug) {
+      consoleHandles.current?.run();
+      return;
+    }
     setView("simulation");
     window.setTimeout(() => consoleHandles.current?.run(), 0);
-  }, [warnings.length]);
+  }, [arenaSlug, view, warnings.length]);
 
   const commands = useMemo<Command[]>(() => {
     const cmd = (
@@ -707,65 +746,7 @@ export default function Home() {
 
   /* --------------------------------------------------------------- views -- */
 
-  return (
-    <div className="shell">
-      {/* ------------------------------------------------------------ nav */}
-      <header className="topnav">
-        <div className="topnav-brand">
-          <span className="brand-mark">LOADLINE</span>
-          <span className="brand-note">
-            system-design simulation · requirements → architecture → simulation → failure →
-            diagnosis
-          </span>
-        </div>
-        <nav className="topnav-views" aria-label="views">
-          {["architecture", "simulation", "comparison", "workspace", "arena"].map((v) => (
-            <button
-              key={v}
-              type="button"
-              className={`topnav-view${view === v ? " active" : ""}`}
-              onClick={() => setView(v)}
-            >
-              {v}
-            </button>
-          ))}
-        </nav>
-        <div className="topnav-actions">
-          <StatusIndicator state={status.state} label={status.label} />
-          <Button
-            variant="primary"
-            disabled={pageRun.active || warnings.length > 0}
-            onClick={() => {
-              setView("simulation");
-              setPageRun({ active: false, outcome: null });
-              runDispatch({ type: "reset" });
-            }}
-          >
-            {pageRun.active ? "running…" : "new run"}
-          </Button>
-        </div>
-      </header>
-
-      {catalogError && (
-        <div className="banner banner-bad" role="status">
-          <span className="banner-mark">!</span>
-          <span>
-            cannot reach the simulation server at <code>{serverUrl}</code> — start
-            it with <code>go run ./cmd/loadline-server</code> from
-            <code> apps/simulator</code>, or correct the server URL in the
-            simulation tab. The catalog and every run depend on it.
-          </span>
-        </div>
-      )}
-
-      {notice && (
-        <div className="banner" role="status">
-          <span className="banner-mark">›</span>
-          <span>{notice}</span>
-        </div>
-      )}
-
-      {view === "architecture" ? (
+  const workbench = (
         <div className="workbench">
           {/* --------------------------------------------------- left rail */}
           <aside className="left-rail">
@@ -964,6 +945,71 @@ export default function Home() {
             />
           </aside>
         </div>
+  );
+
+  return (
+    <div className="shell">
+      {/* ------------------------------------------------------------ nav */}
+      <header className="topnav">
+        <div className="topnav-brand">
+          <span className="brand-mark">LOADLINE</span>
+          <span className="brand-note">
+            system-design simulation · requirements → architecture → simulation → failure →
+            diagnosis
+          </span>
+        </div>
+        <nav className="topnav-views" aria-label="views">
+          {["architecture", "simulation", "comparison", "workspace", "arena"].map((v) => (
+            <button
+              key={v}
+              type="button"
+              className={`topnav-view${view === v ? " active" : ""}`}
+              onClick={() => setView(v)}
+            >
+              {v}
+            </button>
+          ))}
+        </nav>
+        <div className="topnav-actions">
+          <StatusIndicator state={status.state} label={status.label} />
+          <Button
+            variant="primary"
+            disabled={pageRun.active || warnings.length > 0}
+            onClick={() => {
+              setView("simulation");
+              setPageRun({ active: false, outcome: null });
+              runDispatch({ type: "reset" });
+            }}
+          >
+            {pageRun.active ? "running…" : "new run"}
+          </Button>
+        </div>
+      </header>
+
+      {catalogError && (
+        <div className="banner banner-bad" role="status">
+          <span className="banner-mark">!</span>
+          <span>
+            cannot reach the simulation server at <code>{serverUrl}</code> — start
+            it with <code>go run ./cmd/loadline-server</code> from
+            <code> apps/simulator</code>, or correct the server URL in the
+            simulation tab. The catalog and every run depend on it.
+          </span>
+        </div>
+      )}
+
+      {notice && (
+        <div className="banner" role="status">
+          <span className="banner-mark">›</span>
+          <span>{notice}</span>
+        </div>
+      )}
+
+      {view === "architecture" ? (
+        <>
+          {arenaSlug && arenaChallenge && <ChallengeBrief summary={arenaChallenge} />}
+          {workbench}
+        </>
       ) : view === "comparison" ? (
         /* -------------------------------------------- comparison view */
         <div className="sim-view">
@@ -1006,17 +1052,54 @@ export default function Home() {
               <Input value={serverUrl} onChange={setServerUrl} width={220} />
             </Field>
             <span className="sim-toolbar-note">
-              standardized benchmarks: the server supplies the workload, runs the
-              simulation, computes the score, and keeps the leaderboard
+              {arenaSlug
+                ? "one workspace: read the brief, build on the canvas, run the live simulation, then submit the recorded benchmark"
+                : "pick a challenge — the workspace keeps the brief above the canvas while you build, run, and submit"}
             </span>
+            {arenaSlug && <Button onClick={() => setArenaSlug("")}>← all challenges</Button>}
           </div>
-          <ArenaView
-            serverUrl={serverUrl}
-            initialSlug={arenaSlug}
-            onSelectChallenge={setArenaSlug}
-            onOpenCanvas={() => setView("architecture")}
-            onNotice={setNotice}
-          />
+
+          {!arenaSlug ? (
+            <ArenaView
+              serverUrl={serverUrl}
+              onSelectChallenge={setArenaSlug}
+              onNotice={setNotice}
+            />
+          ) : !arenaChallenge ? (
+            <EmptyState>loading the challenge…</EmptyState>
+          ) : (
+            /* One page for the whole arena loop: brief, build, run, submit. */
+            <div className="arena-build">
+              <ChallengeBrief summary={arenaChallenge} />
+              <div className="arena-stage">{workbench}</div>
+
+              <SimConsole
+                architecture={editor.architecture}
+                workload={editor.workload}
+                options={
+                  editor.failures.length > 0
+                    ? { ...editor.options, failures: editor.failures }
+                    : editor.options
+                }
+                serverUrl={serverUrl}
+                running={pageRun.active}
+                onRunningChange={(v) => setPageRun((p) => ({ ...p, active: v }))}
+                onSimId={(id) => runDispatch({ type: "created", id: id ?? "" })}
+                onOutcome={(o) => {
+                  setPageRun((p) => ({ ...p, outcome: o }));
+                  onConsoleOutcome(o);
+                }}
+                handleRef={consoleHandles}
+              />
+
+              <ArenaSubmit
+                serverUrl={serverUrl}
+                challenge={arenaChallenge}
+                architecture={editor.architecture}
+                onNotice={setNotice}
+              />
+            </div>
+          )}
         </div>
       ) : view === "workspace" ? (
         /* ---------------------------------------------- workspace view */
@@ -1302,4 +1385,43 @@ export default function Home() {
       />
     </div>
   );
+}
+
+/**
+ * The selected challenge, stated above the canvas while the user builds.
+ *
+ * Only the problem idea is public: the business scale from the description.
+ * Targets, workload numbers, required components, failure scenarios, and
+ * scoring weights stay server-side, so the architecture is designed from
+ * the requirement rather than toward a metric.
+ */
+function ChallengeBrief({ summary }: { summary: ChallengeSummary }) {
+  return (
+    <div className="arena-brief">
+      <div className="arena-brief-head">
+        <span className="panel-title">{summary.name}</span>
+        <Badge tone={toneForDifficulty(summary.difficulty)}>{summary.difficulty}</Badge>
+        <span className="center-tag">{summary.category}</span>
+      </div>
+      <p className="arena-desc">{summary.description}</p>
+      <p className="arena-blurb">
+        That is the whole brief. No targets, no workload numbers, no component
+        list, no failure list — design the architecture from the problem, run it
+        as often as you like, then submit it to be benchmarked.
+      </p>
+    </div>
+  );
+}
+
+function toneForDifficulty(d: string): "ok" | "warn" | "bad" | "neutral" {
+  switch (d) {
+    case "expert":
+      return "bad";
+    case "advanced":
+      return "warn";
+    case "intermediate":
+      return "neutral";
+    default:
+      return "ok";
+  }
 }

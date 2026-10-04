@@ -102,6 +102,46 @@
   line-height: 1.6;
 }
 
+/* ------------------------------------------------------------ build page -- */
+
+/* The selected challenge, pinned above the canvas. Stated once, quietly. */
+.arena-brief {
+  flex: none;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line-strong);
+  background: var(--panel-2);
+}
+
+.arena-brief-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+/* The whole arena loop on one page: brief → build → run → submit. */
+.arena-build {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* The shared workbench, embedded in the arena scroll column at a fixed
+   height so the canvas keeps a usable drawing surface. */
+.arena-stage .workbench {
+  flex: none;
+  height: 68vh;
+  min-height: 460px;
+  border: 1px solid var(--line);
+}
+
+@media (max-width: 860px) {
+  .arena-stage .workbench {
+    height: auto;
+  }
+}
+
 .arena-plus {
   color: var(--ok, #2f6b3a);
 }
