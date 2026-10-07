@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="LOADLINE">
+  <rect width="64" height="64" fill="#f4f1ea"/>
+  <rect x="4.5" y="4.5" width="55" height="55" fill="none" stroke="#1c1a17" stroke-width="3"/>
+  <!-- Blocky L: no font dependency, renders identically everywhere. -->
+  <path d="M18 15 h11 v25 h17 v10 H18 Z" fill="#1c1a17"/>
+  <!-- Load line: a hairline the L sits on, echoing the product name. -->
+  <rect x="10" y="52" width="44" height="2" fill="#a83232"/>
+</svg>

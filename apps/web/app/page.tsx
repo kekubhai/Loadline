@@ -87,6 +87,7 @@ import {
   kindRole,
   kindFromProtoName,
 } from "./editor";
+import { GITHUB_URL } from "./site";
 import type { EditAction, EditorState } from "./editor";
 import { canRedo, canUndo, historyOf, historyReducer } from "./history";
 import {
@@ -114,7 +115,11 @@ import type { PageRunState } from "./runstate";
 /* --------------------------------------------------------- editor intents -- */
 
 export default function Home() {
-  const [serverUrl, setServerUrl] = useState("http://localhost:8080");
+  // NEXT_PUBLIC_API_URL points the browser at the deployed Go API; when it
+  // is unset (local dev) the server URL field starts at the local default.
+  const [serverUrl, setServerUrl] = useState(
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080",
+  );
   /**
    * The editor document with undo/redo. `dispatch` is the edit path all
    * panels use; history is a layer around it, not a second source of
@@ -952,7 +957,15 @@ export default function Home() {
       {/* ------------------------------------------------------------ nav */}
       <header className="topnav">
         <div className="topnav-brand">
-          <span className="brand-mark">LOADLINE</span>
+          {/* The page's single h1: brand plus the keyword-bearing descriptor
+              (visually hidden so the bar keeps its compact design). */}
+          <h1 className="brand-mark">
+            LOADLINE
+            <span className="visually-hidden">
+              {" "}
+              — system design simulation for capacity, cost and bottlenecks
+            </span>
+          </h1>
           <span className="brand-note">
             system-design simulation · requirements → architecture → simulation → failure →
             diagnosis
@@ -1372,6 +1385,13 @@ export default function Home() {
           )}
         </div>
         <div className="ops-spacer" />
+        <nav className="ops-links" aria-label="site">
+          <a href="/docs">docs</a>
+          <a href="/faq">faq</a>
+          <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
+            github
+          </a>
+        </nav>
         <StatusIndicator
           state={status.state}
           label={state.simId ? `sim ${state.simId}` : status.label}
