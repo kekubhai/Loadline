@@ -50,7 +50,7 @@ const startupTimeout = 30 * time.Second
 const shutdownTimeout = 15 * time.Second
 
 func main() {
-	addr := flag.String("addr", ":8080", "listen address")
+	addr := flag.String("addr", defaultAddr(), "listen address")
 	requireDB := flag.Bool("require-database", false, "exit if DATABASE_URL is not configured")
 	flag.Parse()
 
@@ -169,6 +169,20 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("loadline-server: shutdown: %v", err)
 	}
+}
+
+// defaultAddr returns the listen address: the platform-provided PORT when
+// one is set (Vercel, containers, and other PaaS inject it), :8080
+// otherwise so local runs and CI keep their documented command line.
+func defaultAddr() string {
+	port := os.Getenv("PORT")
+	if port == "" {
+		return ":8080"
+	}
+	if strings.HasPrefix(port, ":") {
+		return port
+	}
+	return ":" + port
 }
 
 // openWorkspaceDatabase connects to PostgreSQL and applies migrations when

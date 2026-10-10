@@ -147,3 +147,7 @@ vite.config.ts.timestamp-*
 
 # Go
 apps/simulator/simulator
+apps/simulator/server
+
+# Vercel project links
+.vercel/
