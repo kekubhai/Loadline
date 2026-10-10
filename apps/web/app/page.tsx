@@ -73,8 +73,6 @@ import {
   Button,
   Divider,
   EmptyState,
-  Field,
-  Input,
   Metric,
   Panel,
   Section,
@@ -115,11 +113,9 @@ import type { PageRunState } from "./runstate";
 /* --------------------------------------------------------- editor intents -- */
 
 export default function Home() {
-  // NEXT_PUBLIC_API_URL points the browser at the deployed Go API; when it
-  // is unset (local dev) the server URL field starts at the local default.
-  const [serverUrl, setServerUrl] = useState(
-    process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080",
-  );
+  // Backend URL is configured via NEXT_PUBLIC_API_URL environment variable
+  // and is no longer exposed in the UI for security and cleaner UX.
+  const serverUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
   /**
    * The editor document with undo/redo. `dispatch` is the edit path all
    * panels use; history is a layer around it, not a second source of
@@ -177,14 +173,14 @@ export default function Home() {
 
   const client = useMemo(
     () => createLoadlineClient({ baseUrl: serverUrl }),
-    [serverUrl],
+    [],
   );
   const arenaClient = useMemo(
     () => createArenaClient({ baseUrl: serverUrl }),
-    [serverUrl],
+    [],
   );
 
-  // Fetch the provider catalog once per server URL; drives the palette.
+  // Fetch the provider catalog once; drives the palette.
   useEffect(() => {
     let alive = true;
     setCatalog(null);
@@ -200,7 +196,7 @@ export default function Home() {
     return () => {
       alive = false;
     };
-  }, [client]);
+  }, []);
 
   /* ------------------------------------------------------ editor intents -- */
 
@@ -1003,10 +999,8 @@ export default function Home() {
         <div className="banner banner-bad" role="status">
           <span className="banner-mark">!</span>
           <span>
-            cannot reach the simulation server at <code>{serverUrl}</code> — start
-            it with <code>go run ./cmd/loadline-server</code> from
-            <code> apps/simulator</code>, or correct the server URL in the
-            simulation tab. The catalog and every run depend on it.
+            cannot reach the simulation server — start it with <code>go run ./cmd/loadline-server</code> from
+            <code> apps/simulator</code>. The catalog and every run depend on it.
           </span>
         </div>
       )}
@@ -1027,9 +1021,6 @@ export default function Home() {
         /* -------------------------------------------- comparison view */
         <div className="sim-view">
           <div className="sim-toolbar">
-            <Field label="server">
-              <Input value={serverUrl} onChange={setServerUrl} width={220} />
-            </Field>
             <span className="sim-toolbar-note">
               save architectures, then compare them under the exact same
               workload, seed, and failure scenario
@@ -1061,9 +1052,6 @@ export default function Home() {
         /* ------------------------------------------------ arena view */
         <div className="sim-view">
           <div className="sim-toolbar">
-            <Field label="server">
-              <Input value={serverUrl} onChange={setServerUrl} width={220} />
-            </Field>
             <span className="sim-toolbar-note">
               {arenaSlug
                 ? "one workspace: read the brief, build on the canvas, run the live simulation, then submit the recorded benchmark"
@@ -1118,9 +1106,6 @@ export default function Home() {
         /* ---------------------------------------------- workspace view */
         <div className="sim-view">
           <div className="sim-toolbar">
-            <Field label="server">
-              <Input value={serverUrl} onChange={setServerUrl} width={220} />
-            </Field>
             <span className="sim-toolbar-note">
               projects, architectures, versions, workloads and runs live in
               postgresql · saving always appends, so a stored run stays
@@ -1141,9 +1126,6 @@ export default function Home() {
         /* --------------------------------------------- simulation view */
         <div className="sim-view">
           <div className="sim-toolbar">
-            <Field label="server">
-              <Input value={serverUrl} onChange={setServerUrl} width={220} />
-            </Field>
             <span className="sim-toolbar-note">
               edits in the architecture view define what runs · the console executes them
             </span>
@@ -1386,6 +1368,7 @@ export default function Home() {
         </div>
         <div className="ops-spacer" />
         <nav className="ops-links" aria-label="site">
+          <a href="/pricing">pricing</a>
           <a href="/docs">docs</a>
           <a href="/faq">faq</a>
           <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">

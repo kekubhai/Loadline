@@ -459,10 +459,29 @@ export function SimConsole({
     () => history.map((s) => Number(s.completed)),
     [history],
   );
+  const inFlightPoints = useMemo(
+    () => history.map((s) => Number(s.inFlight)),
+    [history],
+  );
+  const generatedPoints = useMemo(
+    () => history.map((s) => Number(s.generated)),
+    [history],
+  );
   const inFlight = live ? Number(live.inFlight) : 0;
   const rm = results?.metrics;
   const plan: LoadPlan | undefined = results?.plan;
   const simTime = live?.simTimeMs ?? rm?.durationMs ?? 0;
+
+  // Calculate instantaneous throughput from the last two samples
+  const throughput = useMemo(() => {
+    if (history.length < 2) return 0;
+    const last = history[history.length - 1];
+    const prev = history[history.length - 2];
+    const timeDelta = last.simTimeMs - prev.simTimeMs;
+    if (timeDelta <= 0) return 0;
+    const completedDelta = Number(last.completed) - Number(prev.completed);
+    return (completedDelta / timeDelta) * 1000; // requests per second
+  }, [history]);
 
   return (
     <div className="sim-console">
@@ -481,7 +500,13 @@ export function SimConsole({
           <span className="sim-banner-metric">generated {f0(live.generated)}</span>
         )}
         {live && (
+          <span className="sim-banner-metric">completed {f0(live.completed)}</span>
+        )}
+        {live && (
           <span className="sim-banner-metric">in flight {f0(inFlight)}</span>
+        )}
+        {live && throughput > 0 && (
+          <span className="sim-banner-metric">throughput {f1(throughput)} rps</span>
         )}
         <span className="sim-banner-spacer" />
         {simIdRef.current && <span className="sim-banner-id">{simIdRef.current}</span>}
@@ -550,10 +575,12 @@ export function SimConsole({
                   <Metric label="in flight" value={f0(inFlight)} />
                 </div>
                 <Divider />
-                <Section label="completed requests — per progress sample">
+                <Section label="request throughput — per progress sample">
                   <Sparkline points={completedPoints} label="completed" />
+                  <Sparkline points={generatedPoints} label="generated" />
+                  <Sparkline points={inFlightPoints} label="in flight" />
                   <p className="prose prose-dim">
-                    cumulative completions at each progress sample; the slope
+                    cumulative counts at each progress sample; the slope
                     between samples is measured throughput.
                   </p>
                 </Section>
@@ -572,32 +599,42 @@ export function SimConsole({
 
           <Panel title="Occupancy" tag="per component · instantaneous">
             {live ? (
-              <table>
-                <thead>
-                  <tr>
-                    <th>component</th>
-                    <th>kind</th>
-                    <th>arrived</th>
-                    <th>completed</th>
-                    <th>queue</th>
-                    <th>in flight</th>
-                    <th>util</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {live.components.map((c) => (
-                    <tr key={c.componentId}>
-                      <td>{c.componentId}</td>
-                      <td>{kindByComponent(architecture, c.componentId)}</td>
-                      <td>{f0(c.arrived)}</td>
-                      <td>{f0(c.completed)}</td>
-                      <td>{f0(c.queueDepth)}</td>
-                      <td>{f0(c.inFlight)}</td>
-                      <td>{pct(c.utilization)}</td>
+              <>
+                <div className="metric-row">
+                  <Metric label="total arrived" value={f0(live.components.reduce((sum, c) => sum + Number(c.arrived), 0))} />
+                  <Metric label="total completed" value={f0(live.components.reduce((sum, c) => sum + Number(c.completed), 0))} />
+                  <Metric label="total queued" value={f0(live.components.reduce((sum, c) => sum + Number(c.queueDepth), 0))} />
+                  <Metric label="total in flight" value={f0(live.components.reduce((sum, c) => sum + Number(c.inFlight), 0))} />
+                  <Metric label="avg utilization" value={pct(live.components.reduce((sum, c) => sum + c.utilization, 0) / live.components.length)} />
+                </div>
+                <Divider />
+                <table>
+                  <thead>
+                    <tr>
+                      <th>component</th>
+                      <th>kind</th>
+                      <th>arrived</th>
+                      <th>completed</th>
+                      <th>queue</th>
+                      <th>in flight</th>
+                      <th>util</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {live.components.map((c) => (
+                      <tr key={c.componentId}>
+                        <td>{c.componentId}</td>
+                        <td>{kindByComponent(architecture, c.componentId)}</td>
+                        <td>{f0(c.arrived)}</td>
+                        <td>{f0(c.completed)}</td>
+                        <td>{f0(c.queueDepth)}</td>
+                        <td>{f0(c.inFlight)}</td>
+                        <td>{pct(c.utilization)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
             ) : (
               <EmptyState>no samples yet.</EmptyState>
             )}
