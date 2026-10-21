@@ -10,6 +10,7 @@ import {
   siteGraphLd,
 } from "./site";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import "./primitives.css";
 import "./shell.css";
@@ -79,6 +80,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
         />
         {children}
         <SpeedInsights />
+        <Analytics />
       </body>
     </html>
   );
