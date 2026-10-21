@@ -9,6 +9,7 @@ import {
   jsonLdScript,
   siteGraphLd,
 } from "./site";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import "./primitives.css";
 import "./shell.css";
@@ -77,6 +78,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
           dangerouslySetInnerHTML={{ __html: jsonLdScript(siteGraphLd()) }}
         />
         {children}
+        <SpeedInsights />
       </body>
     </html>
   );
