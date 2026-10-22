@@ -9,6 +9,7 @@ import { GITHUB_URL, SITE_TAGLINE } from "../app/site";
 
 const NAV = [
   { href: "/", label: "app" },
+  { href: "/pricing", label: "pricing" },
   { href: "/docs", label: "docs" },
   { href: "/faq", label: "faq" },
 ] as const;
@@ -48,6 +49,7 @@ export function SiteFooter() {
       </span>
       <nav aria-label="footer">
         <Link href="/">app</Link>
+        <Link href="/pricing">pricing</Link>
         <Link href="/docs">docs</Link>
         <Link href="/faq">faq</Link>
         <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">

@@ -338,3 +338,276 @@
     font-size: 24px;
   }
 }
+
+/* --------------------------------------------------------- pricing ------ */
+
+/* Billing period control: two states, one ink fill — no slider theatrics. */
+.price-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 24px 0 6px;
+}
+
+.bill-toggle {
+  display: inline-flex;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.bill-toggle button {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  background: transparent;
+  border: none;
+  padding: 5px 14px;
+  cursor: pointer;
+}
+
+.bill-toggle button + button {
+  border-left: 1px solid var(--line-strong);
+}
+
+.bill-toggle button[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.bill-save {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  padding: 0 4px;
+}
+
+.bill-note {
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+/* Plan cards — hairline boxes on the paper, Pro marked by an ink border. */
+.price-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(195px, 1fr));
+  gap: 12px;
+  margin: 16px 0 8px;
+}
+
+.price-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: var(--radius);
+  padding: 14px 14px 16px;
+}
+
+.price-card.recommended {
+  border-color: var(--ink);
+}
+
+.price-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.price-name {
+  font-family: var(--serif);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.price-rec {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--paper);
+  background: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 2px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+.price-audience {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+.price-amount {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.price-num {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.price-per {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.price-was {
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.price-basis {
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--ink-faint);
+  margin: -4px 0 0;
+  min-height: 2.6em;
+}
+
+.price-feats {
+  list-style: none;
+  margin: 2px 0 12px;
+  padding: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1 0 auto;
+}
+
+.price-feats li {
+  position: relative;
+  padding-left: 16px;
+}
+
+.price-feats li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--ink-faint);
+  font-size: 11px;
+}
+
+/* The inherited tier is announced, not re-checked. */
+.price-feats .price-inherit {
+  color: var(--ink-soft);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 7px;
+}
+
+.price-feats .price-inherit::before {
+  content: "↳";
+}
+
+.price-cta {
+  display: block;
+  width: 100%;
+  text-align: center;
+  margin-top: auto;
+}
+
+/* Comparison table — features down the left, one column per tier. */
+.price-compare {
+  margin-top: 34px;
+}
+
+.price-compare-note {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin: 6px 0 12px;
+}
+
+.price-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.price-table {
+  min-width: 620px;
+}
+
+.price-table thead th {
+  text-align: center;
+}
+
+.price-table thead th:first-child {
+  text-align: left;
+}
+
+.price-table thead th.rec {
+  color: var(--ink);
+  background: var(--panel);
+  border-bottom-color: var(--ink);
+}
+
+.price-rec-col {
+  display: block;
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  color: var(--ink-faint);
+}
+
+.price-table tbody th {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: normal;
+  width: 34%;
+}
+
+.price-table tbody td {
+  font-size: 12px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.price-table tbody td.rec {
+  color: var(--ink);
+  background: var(--panel-2);
+}
+
+@media (max-width: 640px) {
+  .price-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .price-controls {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .price-basis {
+    min-height: 0;
+  }
+}
