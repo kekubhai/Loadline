@@ -21,7 +21,7 @@ import {
   create,
 } from "@loadline/api";
 import type { Architecture, ComponentSpec } from "@loadline/api";
-import { SCHEMA_VERSION } from "./editor";
+import { SCHEMA_VERSION, optionsForArchitecture } from "./editor";
 import type { EditorState } from "./editor";
 
 export interface ArchitectureTemplate {
@@ -251,16 +251,12 @@ export function templateById(id: string): ArchitectureTemplate | undefined {
  * workload), retry reasons that still exist, and a cleared failure list.
  */
 export function templateState(t: ArchitectureTemplate, base: EditorState): EditorState {
-  const ids = new Set(t.architecture.components.map((c) => c.id));
   return {
     ...base,
     architecture: t.architecture,
     failures: [],
     positions: {},
     selected: null,
-    options: {
-      ...base.options,
-      retryOn: base.options.retryOn.filter((id) => ids.has(id)),
-    },
+    options: optionsForArchitecture(t.architecture, base.options),
   };
 }

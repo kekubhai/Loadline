@@ -79,6 +79,7 @@ function stripPrefixes(raw: string): string {
   text = text.replace(/^invalid workload:\s*/i, "");
   text = text.replace(/^architecture:\s*/i, "");
   text = text.replace(/^workload:\s*/i, "");
+  text = text.replace(/^options:\s*/i, "");
   return text.trim();
 }
 
@@ -132,6 +133,12 @@ function mapKnown(text: string): string | null {
   }
   if (/unknown target component/i.test(text) || /failure .+ unknown target/i.test(text)) {
     return "a failure targets a component that is not on the canvas";
+  }
+  if (/retryon names unknown/i.test(text) || /retry on names unknown/i.test(text)) {
+    const id = quoted(text);
+    return id
+      ? `retries still name "${id}", which is not on the canvas — turn that retry off in the inspector, or run again after a refresh`
+      : "retries name a component that is not on the canvas";
   }
   if (/no provider-backed components/i.test(text)) {
     return "capacity and cost reports need a cloud service from the palette — generic nodes have no pricing model";

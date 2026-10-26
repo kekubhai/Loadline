@@ -41,6 +41,21 @@ export interface EditorState {
   positions: Record<string, { x: number; y: number }>;
 }
 
+/**
+ * Drop retry targets that are not on the architecture. Default options
+ * name "api" and "cache"; dragging Lambda from the palette creates id
+ * "lambda", so a leftover RetryOn would otherwise fail the run.
+ */
+export function optionsForArchitecture(
+  arch: Architecture,
+  options: SimulationOptions,
+): SimulationOptions {
+  const ids = new Set(arch.components.map((c) => c.id));
+  const retryOn = options.retryOn.filter((id) => ids.has(id));
+  if (retryOn.length === options.retryOn.length) return options;
+  return { ...options, retryOn };
+}
+
 /** First free id derived from base: rds, rds-2, rds-3, … Deterministic. */
 export function freshId(components: ComponentSpec[], base: string): string {
   if (!components.some((c) => c.id === base)) return base;
@@ -178,10 +193,12 @@ export function editorReducer(s: EditorState, a: EditAction): EditorState {
       const failures = s.failures.map((f) =>
         f.target === a.from ? { ...f, target: to } : f,
       );
+      const retryOn = s.options.retryOn.map((id) => (id === a.from ? to : id));
       return {
         ...s,
         architecture: { ...s.architecture, components, links },
         failures,
+        options: { ...s.options, retryOn },
         selected: s.selected === a.from ? to : s.selected,
       };
     }
@@ -192,10 +209,12 @@ export function editorReducer(s: EditorState, a: EditAction): EditorState {
         (l) => l.from !== a.id && l.to !== a.id,
       );
       const failures = s.failures.filter((f) => f.target !== a.id);
+      const architecture = { ...s.architecture, components, links };
       return {
         ...s,
-        architecture: { ...s.architecture, components, links },
+        architecture,
         failures,
+        options: optionsForArchitecture(architecture, s.options),
         selected: s.selected === a.id ? null : s.selected,
       };
     }

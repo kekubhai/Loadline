@@ -16,6 +16,7 @@ import {
   editorReducer,
   initialEditorState,
   freshId,
+  optionsForArchitecture,
   validateArchitecture,
   kindRole,
   kindFromProtoName,
@@ -101,6 +102,8 @@ describe("build architecture", () => {
     expect(s.architecture.components.some((c) => c.id === "memcache")).toBe(true);
     expect(s.architecture.links.some((l) => l.to === "memcache")).toBe(true);
     expect(s.failures[0].target).toBe("memcache");
+    expect(s.options.retryOn).toContain("memcache");
+    expect(s.options.retryOn).not.toContain("cache");
   });
 
   it("renames the architecture", () => {
@@ -114,6 +117,8 @@ describe("build architecture", () => {
     expect(s.architecture.components.some((c) => c.id === "cache")).toBe(false);
     expect(s.architecture.links.some((l) => l.from === "cache" || l.to === "cache")).toBe(false);
     expect(s.failures.some((f) => f.target === "cache")).toBe(false);
+    expect(s.options.retryOn).not.toContain("cache");
+    expect(s.options.retryOn).toContain("api");
   });
 
   it("duplicates a component without touching links", () => {
@@ -250,6 +255,14 @@ describe("canvas presentation state", () => {
 });
 
 describe("helpers", () => {
+  it("drops retry targets that are not on the architecture", () => {
+    const next = optionsForArchitecture(initialEditorState.architecture, {
+      ...initialEditorState.options,
+      retryOn: ["api", "lambda", "cache"],
+    });
+    expect(next.retryOn).toEqual(["api", "cache"]);
+  });
+
   it("freshId walks to the first free suffix", () => {
     const ids = initialEditorState.architecture.components;
     expect(freshId(ids, "db")).toBe("db-2");

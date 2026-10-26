@@ -30,6 +30,7 @@ import {
   type SimulationOptions,
   type WorkloadSpec,
 } from "@loadline/api";
+import { optionsForArchitecture } from "../app/editor";
 import { userError } from "../app/usererror";
 import { f0, f1, f2, kindName, pct } from "./format";
 import {
@@ -281,7 +282,7 @@ export function SimConsole({
       const created = await client.createSimulation({
         architecture,
         workload,
-        options,
+        options: optionsForArchitecture(architecture, options),
       });
       const id = created.simulation?.id ?? "";
       if (!id) throw new Error("backend returned no simulation id");

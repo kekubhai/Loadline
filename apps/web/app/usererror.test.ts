@@ -29,6 +29,9 @@ describe("userError / userErrorText", () => {
     expect(userErrorText('architecture: duplicate component ID "api"')).toBe(
       'two components share the id "api" — each id must be unique',
     );
+    expect(userErrorText('sim: options: RetryOn names unknown component "api"')).toMatch(
+      /retries still name "api"/i,
+    );
   });
 
   it("maps workload and capacity/cost preconditions", () => {

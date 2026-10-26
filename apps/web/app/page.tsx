@@ -81,6 +81,7 @@ import {
 } from "../components/ui";
 import {
   initialEditorState,
+  optionsForArchitecture,
   validateArchitecture,
   kindRole,
   kindFromProtoName,
@@ -135,7 +136,14 @@ export default function Home() {
   const undo = useCallback(() => dispatchHist({ type: "undo" }), []);
   const redo = useCallback(() => dispatchHist({ type: "redo" }), []);
   const loadState = useCallback(
-    (state: EditorState) => dispatchHist({ type: "load", state }),
+    (state: EditorState) =>
+      dispatchHist({
+        type: "load",
+        state: {
+          ...state,
+          options: optionsForArchitecture(state.architecture, state.options),
+        },
+      }),
     [],
   );
   /**
@@ -1038,7 +1046,10 @@ export default function Home() {
             runComparison={async ({ workload, architectures, options }) => {
               const res = await client.runComparison({
                 workload,
-                options,
+                options: architectures.reduce(
+                  (opts, a) => optionsForArchitecture(a.architecture, opts),
+                  options,
+                ),
                 architectures: architectures.map((a) => ({
                   name: a.name,
                   architecture: a.architecture,

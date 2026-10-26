@@ -47,6 +47,7 @@ import {
   versionLabel,
   workspaceReducer,
 } from "../app/workspace";
+import { optionsForArchitecture } from "../app/editor";
 import { userError, userErrorText } from "../app/usererror";
 import { comparisonRows } from "../app/comparison";
 import {
@@ -311,7 +312,9 @@ export function WorkspaceView({
         architectureVersionId: version.id,
         workloadId: wl.id,
         // The editor's failure injections are the scenario for this run.
-        options: { ...options, failures },
+        options: version.definition
+          ? optionsForArchitecture(version.definition, { ...options, failures })
+          : { ...options, failures },
       });
       if (!res.result?.run) throw new Error("backend returned no run");
       d({ type: "result", runId: res.result.run.id, result: res.result });
