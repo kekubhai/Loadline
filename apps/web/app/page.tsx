@@ -95,6 +95,7 @@ import {
   parseDocument,
   serializeDocument,
 } from "./documentio";
+import { userError } from "./usererror";
 import { TEMPLATES, templateById, templateState } from "./templates";
 import {
   EXPLORE_CATEGORIES,
@@ -191,7 +192,7 @@ export default function Home() {
         if (alive) setCatalog(res.services);
       })
       .catch((e) => {
-        if (alive) setCatalogError(e instanceof Error ? e.message : String(e));
+        if (alive) setCatalogError(userError(e));
       });
     return () => {
       alive = false;
@@ -348,7 +349,7 @@ export default function Home() {
         });
         setNotice(`imported ${parsed.architecture.name || file.name}`);
       } catch (e) {
-        setNotice(`import failed — ${e instanceof Error ? e.message : String(e)}`);
+        setNotice(`import failed — ${userError(e)}`);
       }
     },
     [editor, loadState],
@@ -410,7 +411,7 @@ export default function Home() {
       });
       setNotice("loaded architecture from the share link");
     } catch (e) {
-      setNotice(`share link rejected — ${e instanceof Error ? e.message : String(e)}`);
+      setNotice(`share link rejected — ${userError(e)}`);
     }
   }, [loadState]);
 
@@ -436,7 +437,7 @@ export default function Home() {
       .catch((e: unknown) => {
         if (alive) {
           setArenaChallenge(null);
-          setNotice(`challenge unavailable — ${e instanceof Error ? e.message : String(e)}`);
+          setNotice(`challenge unavailable — ${userError(e)}`);
         }
       });
     return () => {

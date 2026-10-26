@@ -59,7 +59,7 @@ export function Palette({
     <nav className="palette">
       <div className="pal-head">Providers</div>
       {catalogError ? (
-        <div className="pal-note">{catalogError}</div>
+        <div className="pal-note">server unreachable</div>
       ) : !catalog ? (
         <div className="pal-note">loading catalog…</div>
       ) : (

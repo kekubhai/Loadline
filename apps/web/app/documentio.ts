@@ -72,8 +72,7 @@ function asObject(value: unknown): JsonObject {
 /**
  * Parse an exported document (or a bare Architecture JSON object) back
  * into editor state. Throws with an actionable message — the same
- * validation strings the architecture view shows — instead of surfacing
- * a protobuf stack trace.
+ * validation strings the architecture view shows — never a protobuf dump.
  */
 export function parseDocument(text: string): {
   architecture: Architecture;
@@ -104,8 +103,8 @@ export function parseDocument(text: string): {
   let architecture: Architecture;
   try {
     architecture = fromJson(ArchitectureSchema, asObject(archJson));
-  } catch (e) {
-    return fail(`architecture does not match the schema: ${e instanceof Error ? e.message : String(e)}`);
+  } catch {
+    return fail("this file is not a valid LOADLINE architecture — export again from the editor");
   }
   if (architecture.components.length === 0) {
     return fail("the document contains no components");

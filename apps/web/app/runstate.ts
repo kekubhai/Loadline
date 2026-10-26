@@ -19,6 +19,7 @@ import type {
   RunSummary,
 } from "@loadline/api";
 import type { SimOutcome } from "../components/simconsole";
+import { userError } from "./usererror";
 
 export type Phase = "idle" | "running" | "done" | "error";
 
@@ -164,7 +165,7 @@ export async function fetchOutcomeArtifacts(
     // report. Surface the message, keep the results.
     dispatch({
       type: "error",
-      message: e instanceof Error ? e.message : String(e),
+      message: userError(e),
     });
   }
 }

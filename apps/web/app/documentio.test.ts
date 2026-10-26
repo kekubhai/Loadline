@@ -135,6 +135,18 @@ describe("parseDocument errors", () => {
     doc.workload = { totalUsers: "not-a-number" };
     expect(bad(JSON.stringify(doc))).toThrow(/workload block/i);
   });
+
+  it("rejects a malformed architecture without a protobuf dump", () => {
+    expect(
+      bad(
+        JSON.stringify({
+          kind: DOCUMENT_KIND,
+          schemaVersion: "1",
+          architecture: { name: 12, components: "nope" },
+        }),
+      ),
+    ).toThrow(/not a valid LOADLINE architecture/i);
+  });
 });
 
 describe("share hash", () => {

@@ -18,6 +18,7 @@
 import { useEffect, useMemo, useReducer } from "react";
 import { createArenaClient } from "@loadline/api";
 import type { ChallengeSummary } from "@loadline/api";
+import { userError } from "../app/usererror";
 import { EmptyState, Panel } from "./ui";
 
 interface PickerState {
@@ -58,7 +59,7 @@ export function ArenaView({
       .then((res) => alive && d({ type: "challenges", challenges: res.challenges }))
       .catch(
         (e: unknown) =>
-          alive && d({ type: "error", message: e instanceof Error ? e.message : String(e) }),
+          alive && d({ type: "error", message: userError(e) }),
       );
     return () => {
       alive = false;

@@ -27,6 +27,7 @@ import type {
   Submission,
 } from "@loadline/api";
 import { f0, f1, f2, pct, price } from "./format";
+import { userError, userErrorText } from "../app/usererror";
 import { Badge, Button, EmptyState, Field, Input, Panel, Section } from "./ui";
 
 /** Workspace project that collects Arena submissions. */
@@ -164,7 +165,9 @@ export function ArenaSubmit({
       if (res.submission.status === "completed") {
         onNotice(`benchmarked ${displayName} — score ${res.submission.score.toFixed(1)}`);
       } else {
-        onNotice(`benchmark failed: ${res.submission.error || "unknown error"}`);
+        onNotice(
+          `benchmark failed: ${userErrorText(res.submission.error || "unknown error")}`,
+        );
       }
       void reloadLeaderboard();
     } catch (e) {
@@ -331,5 +334,5 @@ function Fact({ label, value }: { label: string; value: string }) {
 }
 
 function msg(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
+  return userError(e);
 }

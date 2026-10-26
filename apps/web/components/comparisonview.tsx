@@ -28,6 +28,7 @@ import {
   primaryBottleneck,
 } from "../app/comparison";
 import type { SavedArchitecture } from "../app/comparison";
+import { userError, userErrorText } from "../app/usererror";
 import { f0, f1, f2, pct, price } from "./format";
 import { ComparisonBars, comparisonSeries } from "./charts";
 import {
@@ -87,7 +88,7 @@ export function ComparisonView({
     } catch (e) {
       dispatch({
         type: "failed",
-        message: e instanceof Error ? e.message : String(e),
+        message: userError(e),
       });
     }
   };
@@ -301,7 +302,7 @@ export function ComparisonView({
                     <span className="diag-id">{e.name}</span>
                   </div>
                   {e.error !== "" ? (
-                    <p className="error-line">{e.error}</p>
+                    <p className="error-line">{userErrorText(e.error)}</p>
                   ) : e.diagnosis && e.diagnosis.bottlenecks.length > 0 ? (
                     e.diagnosis.bottlenecks.map((b) => (
                       <div key={b.componentId} className="diag">

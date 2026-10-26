@@ -240,7 +240,7 @@ describe("SimConsole run lifecycle", () => {
     await user.click(screen.getByRole("button", { name: "run" }));
 
     await waitFor(() => expect(outcomes).toEqual([{ status: "failed", simId: "" }]));
-    expect(await screen.findByText(/invalid workload/)).toBeInTheDocument();
+    expect(await screen.findByText(/peak multiplier must be at least 1/i)).toBeInTheDocument();
   });
 
   it("reports failure when the stream ends with a FAILED status frame", async () => {
@@ -254,7 +254,7 @@ describe("SimConsole run lifecycle", () => {
     const { outcomes } = renderConsole();
     await user.click(screen.getByRole("button", { name: "run" }));
     await waitFor(() => expect(outcomes).toEqual([{ status: "failed", simId: "sim-77" }]));
-    expect(await screen.findByText(/dependency cycle detected/)).toBeInTheDocument();
+    expect(await screen.findByText(/this architecture has a cycle/i)).toBeInTheDocument();
   });
 
   it("stop issues the control RPC and terminal STOPPED frames produce a stopped outcome with partial results", async () => {

@@ -47,6 +47,7 @@ import {
   versionLabel,
   workspaceReducer,
 } from "../app/workspace";
+import { userError, userErrorText } from "../app/usererror";
 import { comparisonRows } from "../app/comparison";
 import {
   BottleneckPanel,
@@ -123,7 +124,7 @@ export function WorkspaceView({
         // Connect surfaces the backend's structured message; anything else
         // (a dead server) surfaces its own text. Either way the user sees
         // what happened, and no stack trace is invented here.
-        d({ type: "error", message: e instanceof Error ? e.message : String(e) });
+        d({ type: "error", message: userError(e) });
         return null;
       }
     },
@@ -146,7 +147,7 @@ export function WorkspaceView({
         if (!alive) return;
         d({
           type: "error",
-          message: e instanceof Error ? e.message : String(e),
+          message: userError(e),
         });
       });
     return () => {
@@ -320,7 +321,7 @@ export function WorkspaceView({
       const status = runStatusDisplay(res.result.run.status);
       onNotice(
         res.result.run.status === RunStatus.FAILED
-          ? `run failed: ${res.result.run.error}`
+          ? `run failed: ${userErrorText(res.result.run.error)}`
           : `run saved · seed ${res.result.run.seed} · ${status.label}`,
       );
     } catch (e) {
@@ -700,7 +701,7 @@ export function WorkspaceView({
         <Panel title={`Stored run ${shortId(open.id)}`} tag={`seed ${open.seed}`}>
           {runProblem(open) !== "" ? (
             <EmptyState>
-              {runProblem(open)} — a failed run is stored honestly, with no
+              {userErrorText(runProblem(open))} — a failed run is stored honestly, with no
               fabricated metrics.
             </EmptyState>
           ) : openResult ? (
@@ -895,5 +896,5 @@ function formatCell(metric: string, v: number | null): string {
 }
 
 function message(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
+  return userError(e);
 }

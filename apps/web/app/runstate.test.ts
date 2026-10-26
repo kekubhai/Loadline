@@ -124,6 +124,6 @@ describe("fetchOutcomeArtifacts", () => {
     });
     const kinds = dispatch.mock.calls.map((c) => c[0].type);
     expect(kinds).toEqual(["results", "diagnosis", "error"]);
-    expect(dispatch.mock.calls.at(-1)![0].message).toContain("no provider-backed components");
+    expect(dispatch.mock.calls.at(-1)![0].message).toMatch(/cloud service from the palette/i);
   });
 });

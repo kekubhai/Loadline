@@ -30,6 +30,7 @@ import {
   type SimulationOptions,
   type WorkloadSpec,
 } from "@loadline/api";
+import { userError } from "../app/usererror";
 import { f0, f1, f2, kindName, pct } from "./format";
 import {
   Badge,
@@ -353,8 +354,7 @@ export function SimConsole({
       if (!isCurrent()) return;
       onRunningChange(false);
       applyStatus(RunStatus.FAILED);
-      const message = e instanceof Error ? e.message : String(e);
-      setError(message);
+      setError(userError(e));
       // The page must learn the run failed too: without this the nav
       // banner kept saying "idle" after a failed run.
       onOutcome({ status: "failed", simId: simIdRef.current ?? "" });
@@ -369,7 +369,7 @@ export function SimConsole({
       await client.pauseSimulation({ simulationId: id });
       // The control frame on the stream confirms the transition.
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(userError(e));
     }
   }, []);
 
@@ -383,7 +383,7 @@ export function SimConsole({
         wallDurationMs: BASE_PACE_MS / speedRef.current,
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(userError(e));
     }
   }, []);
 
@@ -395,7 +395,7 @@ export function SimConsole({
       applyStatus(RunStatus.STOPPING);
       await client.stopSimulation({ simulationId: id });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(userError(e));
     }
   }, [applyStatus]);
 
