@@ -90,10 +90,10 @@ The engine is framework-independent: it runs and tests without a browser, and th
 - **[AGENTS.md](AGENTS.md)** — engineering principles the project is built on (model behavior, determinism, provider abstraction, honest metrics).
 - Machine-readable summaries for LLMs: `/llms.txt` and `/llms-full.txt` on the deployed site.
 
-> The docs/faq links point at the production origin. Set `NEXT_PUBLIC_SITE_URL`
-> in `apps/web/.env.local` (or your host's environment) to your deployed
-> origin before release — it drives canonical URLs, the sitemap, robots.txt
-> and structured data.
+> The docs/faq links point at the production origin, `https://loadline.tech`.
+> Set `NEXT_PUBLIC_SITE_URL` in `apps/web/.env.local` (or your host's
+> environment) to override it — it drives canonical URLs, the sitemap,
+> robots.txt, structured data and Open Graph image URLs.
 
 ## License
 
