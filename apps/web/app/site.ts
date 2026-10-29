@@ -3,28 +3,32 @@
  *
  * SITE_URL drives canonical links, og:url, the sitemap, robots.txt and
  * every JSON-LD block. Set NEXT_PUBLIC_SITE_URL in apps/web/.env.local
- * (or in the host's env) to the deployed origin before release; until
- * then it falls back to the public repository, which always resolves.
+ * (or in the host's env) to override the origin, e.g. for a preview
+ * deployment; otherwise it falls back to the production domain.
  *
  * This module is imported by client components too (the app shell links
  * to GitHub), so it must stay free of server-only APIs.
  */
 
 const REPO_URL = "https://github.com/kekubhai/Loadline";
+const PRODUCTION_URL = "https://loadline.tech";
 
 function normalizeSiteUrl(): string {
   const raw = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  if (!raw) return REPO_URL;
+  if (!raw) return PRODUCTION_URL;
   try {
     return new URL(raw).toString().replace(/\/$/, "");
   } catch {
     // An invalid env value must never break the build — fall back.
-    return REPO_URL;
+    return PRODUCTION_URL;
   }
 }
 
 /** Absolute origin of the deployed site, no trailing slash. */
 export const SITE_URL = normalizeSiteUrl();
+
+/** Bare host for display ("loadline.tech"), e.g. on preview cards. */
+export const SITE_HOST = new URL(SITE_URL).host;
 
 /** Public source repository. */
 export const GITHUB_URL = REPO_URL;
