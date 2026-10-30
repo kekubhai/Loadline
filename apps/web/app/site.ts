@@ -11,7 +11,9 @@
  */
 
 const REPO_URL = "https://github.com/kekubhai/Loadline";
-const PRODUCTION_URL = "https://loadline.tech";
+// The www host is canonical: the apex 308-redirects to it, and crawlers
+// fetching og:image do not always follow redirects.
+const PRODUCTION_URL = "https://www.loaddline.tech";
 
 function normalizeSiteUrl(): string {
   const raw = process.env.NEXT_PUBLIC_SITE_URL?.trim();
@@ -27,8 +29,8 @@ function normalizeSiteUrl(): string {
 /** Absolute origin of the deployed site, no trailing slash. */
 export const SITE_URL = normalizeSiteUrl();
 
-/** Bare host for display ("loadline.tech"), e.g. on preview cards. */
-export const SITE_HOST = new URL(SITE_URL).host;
+/** Bare host for display ("loaddline.tech"), e.g. on preview cards. */
+export const SITE_HOST = new URL(SITE_URL).host.replace(/^www\./, "");
 
 /** Public source repository. */
 export const GITHUB_URL = REPO_URL;
