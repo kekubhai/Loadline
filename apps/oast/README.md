@@ -96,6 +96,7 @@ Use this engine only against systems you are explicitly authorized to test.
 ```text
 cmd/oastd/             HTTP + DNS process entrypoint
 cmd/oast-demo/         deterministic end-to-end demo (no API key)
+cmd/oast-console/      local-only web UI over the MCP tools + lab
 internal/callback/     HTTP and DNS callback receivers
 internal/clock/        injectable time source
 internal/config/       environment parsing and validation
@@ -418,6 +419,38 @@ requirements traceability table is in [`REQUIREMENTS.md`](REQUIREMENTS.md).
 - Individual package tests (e.g. `go test ./lab/...`) are unit-level and do not,
   by themselves, prove the cross-component workflow. If an integration test
   fails, the suite fails — it does not degrade to unit-only results.
+
+## Web console (local only)
+
+`cmd/oast-console` is a small **local-only** web UI for exercising the stack by
+hand from a browser. It wires the engine, the DNS/HTTP receivers, the lab, an
+MCP server, and a real in-process MCP client in one process, and serves a page
+whose buttons call the **actual MCP tools** (`oast_create_test`,
+`oast_get_evidence`, `oast_list_tests`, `oast_close_test`) and drive the lab to
+produce callbacks.
+
+```bash
+cd apps/oast
+go run ./cmd/oast-console/        # then open http://127.0.0.1:8099
+```
+
+PowerShell is identical. Configure the authorized scope and bind address with
+env vars if needed:
+
+```powershell
+$env:OAST_AUTHORIZED_SCOPES = "lab.local"
+$env:OAST_CONSOLE_ADDR = "127.0.0.1:8099"   # loopback only; a non-loopback bind is refused
+go run ./cmd/oast-console/
+```
+
+In the browser: **Create test** → **Trigger HTTP (Scenario A)** → **Get
+evidence** (protocol `http`) → **Trigger DNS (Scenario B)** → **Get evidence**
+(protocol `dns`) → **Close test**. Scope enforcement is unchanged, so an
+out-of-scope target is rejected in the UI too.
+
+This console **enables the intentionally vulnerable lab** and has no auth; it
+binds loopback only and must never be exposed. It is a developer aid — for a
+hands-off, scripted proof use `cmd/oast-demo` instead.
 
 ## Verification
 
