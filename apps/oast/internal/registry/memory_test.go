@@ -465,3 +465,43 @@ func TestListAndExpire(t *testing.T) {
 		t.Fatalf("second state = %s", got.State)
 	}
 }
+
+// TestStateIsNotSharedAcrossInstances documents that the registry is purely
+// in-memory: a fresh instance (as after a process restart) retains no tests or
+// evidence from a previous one, and a stale token is no longer accepted.
+func TestStateIsNotSharedAcrossInstances(t *testing.T) {
+	cfg := MemoryConfig{
+		MaxActiveTests:          10,
+		MaxTestLifetime:         time.Hour,
+		MaxEvidencePerTest:      10,
+		MaxEvidenceBytesPerTest: 1 << 20,
+	}
+	first, err := NewMemory(cfg, clock.System{}, token.CryptoGenerator{})
+	if err != nil {
+		t.Fatalf("NewMemory() error = %v", err)
+	}
+	created, err := first.Create(context.Background(), CreateRequest{
+		Target: "lab.local", AuthorizationRef: "ref", TTL: time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	// A second instance models a restart: no shared state.
+	second, err := NewMemory(cfg, clock.System{}, token.CryptoGenerator{})
+	if err != nil {
+		t.Fatalf("NewMemory() error = %v", err)
+	}
+	if _, err := second.Get(context.Background(), created.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("second.Get() error = %v, want ErrNotFound", err)
+	}
+	summaries, err := second.List(context.Background())
+	if err != nil || len(summaries) != 0 {
+		t.Fatalf("second.List() = %d summaries, err=%v; want 0", len(summaries), err)
+	}
+	if _, err := second.AppendEvidence(context.Background(), created.Token, evidence.Record{
+		Protocol: evidence.ProtocolHTTP, HTTP: &evidence.HTTPInteraction{Method: "GET"},
+	}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("second.AppendEvidence() error = %v, want ErrNotFound", err)
+	}
+}
