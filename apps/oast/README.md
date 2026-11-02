@@ -31,6 +31,7 @@ Use this engine only against systems you are explicitly authorized to test.
 
 ```text
 cmd/oastd/             HTTP + DNS process entrypoint
+cmd/oast-demo/         deterministic end-to-end demo (no API key)
 internal/callback/     HTTP and DNS callback receivers
 internal/clock/        injectable time source
 internal/config/       environment parsing and validation
@@ -307,6 +308,52 @@ not `apps.lab.test` itself. CIDRs match IP targets.
 - A and AAAA return configured callback addresses. Other types are recorded but
   return no answer records.
 - No recursion, upstream forwarding, or zone transfer is supported.
+
+## Reproducible demo (no API key)
+
+`cmd/oast-demo` runs the entire workflow end-to-end in one process — no LLM API
+key, no external DNS, no internet. It starts the engine (HTTP + DNS receivers)
+on loopback, starts the intentionally vulnerable lab with both scenarios
+enabled, connects a real MCP client to a real MCP server over an in-process
+transport, and then: creates a test, triggers an HTTP callback and retrieves the
+HTTP evidence, creates a second test, triggers a DNS callback and retrieves the
+DNS evidence, and finally closes both tests and prints their lifecycle state.
+Every listener and session is cleaned up on exit, and any failed step aborts
+with a non-zero exit code (no silent fallback).
+
+Unix shell:
+
+```bash
+cd apps/oast
+go run ./cmd/oast-demo/
+```
+
+Windows PowerShell:
+
+```powershell
+cd apps/oast
+go run ./cmd/oast-demo/
+```
+
+Expected final line: `DEMO OK: full HTTP and DNS OAST callbacks were observed
+through MCP.` (exit code 0). The demo binds only `127.0.0.1` on OS-assigned
+ports and needs no configuration.
+
+To instead drive the system with your own MCP-compatible client over stdio, run
+`oastd` with `OAST_MCP_TRANSPORT=stdio` and the lab as described under
+[MCP server](#mcp-server) and in [`lab/README.md`](lab/README.md). The
+requirements traceability table is in [`REQUIREMENTS.md`](REQUIREMENTS.md).
+
+### Full end-to-end vs. unit-only
+
+- `go test ./...` runs **everything**, including the real end-to-end flow in
+  `internal/integration/` (live loopback receivers + lab + MCP). These tests are
+  always-on; they are not skipped and there is no weaker fallback.
+- `go run ./cmd/oast-demo/` is the same full flow as a runnable, human-readable
+  demonstration.
+- Individual package tests (e.g. `go test ./lab/...`) are unit-level and do not,
+  by themselves, prove the cross-component workflow. If an integration test
+  fails, the suite fails — it does not degrade to unit-only results.
 
 ## Verification
 
