@@ -1,15 +1,79 @@
 # OAST Engine
 
-Standalone out-of-band application security testing (OAST) callback engine for
-LOADLINE. It receives HTTP and authoritative DNS callbacks, records evidence,
-and returns it through an in-process registry. An optional Model Context
-Protocol (MCP) server exposes the same engine to a locally launched AI agent.
+## The problem
 
-This engine is intentionally narrow. It does **not** include an admin API, a
-dashboard, a vulnerable lab, Docker deployment, public DNS, database
-persistence, automated scanning, or any outbound/proxy functionality. The MCP
-layer is a transport adapter only: authorization, lifecycle, evidence capture,
-and limits all remain in the existing engine packages.
+Some of the most important web vulnerabilities are **blind**: the server can be
+induced to make an outbound request (blind SSRF), or to resolve a hostname
+(DNS-based injection), but the attacker never sees the response in the HTTP
+reply. The only reliable signal is an **out-of-band interaction** arriving at a
+server you control. Out-of-band Application Security Testing (OAST) is the
+technique of minting a unique callback identity per test, getting the target to
+touch it, and treating that touch as evidence that the interaction happened.
+
+This project is an engineering-grade OAST engine with three parts:
+
+- an **engine** that mints unique callback tokens and receives HTTP and
+  authoritative DNS callbacks, recording structured evidence;
+- an **MCP server** that lets an AI agent (or any MCP client) drive the engine
+  with four tools; and
+- a small **intentionally vulnerable lab** that demonstrates the blind-SSRF and
+  DNS-callback workflow end-to-end, entirely on loopback.
+
+## Architecture
+
+```text
+            MCP client (AI agent / oast-demo / any MCP client)
+                               │  stdio  (or loopback Streamable HTTP)
+                               ▼
+        ┌─────────────────── oastd ───────────────────┐
+        │  MCP server  ──▶  service  ──▶  registry     │   source of truth:
+        │  (4 tools)        (scope +      (lifecycle,   │   authorization,
+        │                    TTL policy)   evidence)    │   lifecycle, evidence,
+        │        ▲                 ▲                     │   and all limits live
+        │        │                 │ append evidence    │   in these packages —
+        │  HTTP receiver     DNS receiver               │   the MCP layer only
+        └────────┼─────────────────┼────────────────────┘   adapts transport.
+                 │ callback         │ callback
+                 ▼                  ▼
+         ┌──────────────── lab (victim) ───────────────┐
+         │  POST /lab/http-fetch  → server-side GET     │   pinned to the local
+         │  POST /lab/dns-lookup  → server-side resolve │   OAST receivers only;
+         │  (both OFF by default, zone-allowlisted)     │   imports no engine code
+         └──────────────────────────────────────────────┘
+```
+
+The engine is the source of truth. The MCP server is a transport adapter:
+authorization, lifecycle, evidence capture, and limits all live in the engine
+packages. The lab is a standalone "victim" that imports none of the engine.
+
+## MCP tools
+
+| Tool | Purpose |
+| --- | --- |
+| `oast_create_test` | Validate a target against the authorized scope and mint a test with HTTP + DNS callback locations. |
+| `oast_get_evidence` | Retrieve a test's structured HTTP/DNS evidence, with an incremental sequence cursor and a bounded long poll. |
+| `oast_list_tests` | List test metadata (no tokens, no raw evidence). |
+| `oast_close_test` | Close a test so later callbacks are rejected; returns final state + evidence count. |
+
+## Is this "blind SSRF"?
+
+The HTTP scenario demonstrates the **blind-SSRF detection workflow**: the agent
+supplies a URL to the lab's vulnerable endpoint, the lab makes a *server-side*
+request, and the agent confirms the interaction **only** through the OAST
+callback — never from the HTTP reply. That is exactly how blind SSRF is
+confirmed in the field.
+
+Two honest caveats, stated plainly:
+
+1. **Exploitation scope is deliberately bounded.** The lab is pinned to the
+   local OAST receiver by an allowlist and a pinned dialer, so it shows the
+   vulnerable *pattern* and the *confirmation technique* — not unrestricted
+   access to arbitrary internal targets. That restriction is a safety control,
+   not a weakening of the demonstration.
+2. **A callback is evidence of an observed interaction, not proof of a
+   vulnerability or impact.** Every record is marked `observed_interaction_only`.
+   Confirming real-world impact requires correlating the callback with the
+   request you sent and the authorization for the engagement.
 
 ## Safety and scope
 

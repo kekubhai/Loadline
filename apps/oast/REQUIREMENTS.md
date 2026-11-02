@@ -47,6 +47,8 @@ explicitly out of scope for the assignment.
 | `oast_close_test` (idempotent, rejects later evidence) | `mcp/tools.go` `closeTest` | `mcp_test.go` `TestCloseIsIdempotentAndRejectsNewEvidence` | pass |
 | Structured, safe errors (no tokens/stack/env) | `mcp/server.go` `toolErrorFrom` | `mcp_test.go` `TestToolErrorsAreStructured` | pass |
 | MCP cannot bypass scope / active-limit | handlers call `service` only | `mcp_test.go` `TestActiveTestLimitIsNotBypassedViaMCP`, `TestCreateRejectsOutOfScopeTarget` | pass |
+| Out-of-scope rejection is logged (no target/secret leak) | `mcp/server.go` `logToolError`; `mcp/tools.go` deferred log per tool | `mcp_test.go` `TestOutOfScopeRejectionIsLogged` | pass |
+| Externally launched MCP client drives the real `oastd` over stdio | `cmd/oastd` (`OAST_MCP_TRANSPORT=stdio`); SDK `CommandTransport` | manual verification (see "External client verification" below) | pass |
 
 ## Phase 3 — controlled lab + end-to-end
 
@@ -82,6 +84,31 @@ explicitly out of scope for the assignment.
 
 AI/LLM features, auth, payments, DB persistence, public DNS deployment, public
 MCP endpoints, a frontend/dashboard, automated scanning/exploitation. — **n/a**
+
+## External client verification
+
+The deterministic `cmd/oast-demo` uses an in-process MCP transport for
+reproducibility. To prove that a **separately launched** MCP client can connect
+to the **real** running service, a throwaway check built `oastd` and connected a
+real SDK client to it as a child process over stdio
+(`mcp.CommandTransport{Command: exec.Command(oastd)}`, with
+`OAST_MCP_TRANSPORT=stdio`, `OAST_HTTP_PORT=0`, `OAST_DNS_PORT=0`). Result: the
+external client listed all four tools and created a test successfully. The check
+was removed after running (not part of the committed suite). To reproduce:
+
+```bash
+go build -o oastd ./cmd/oastd
+# then point any MCP client's stdio command at ./oastd with
+# OAST_MCP_TRANSPORT=stdio and OAST_AUTHORIZED_SCOPES set.
+```
+
+## Blind-SSRF scope (honest statement)
+
+The HTTP scenario demonstrates the blind-SSRF **detection workflow** (server-side
+request confirmed only via the out-of-band callback), not unrestricted SSRF
+exploitation: the lab is intentionally pinned to the local OAST receiver. A
+callback is `observed_interaction_only` — evidence of an interaction, not proof
+of a vulnerability. See the README section "Is this blind SSRF?".
 
 ## `-race` note
 

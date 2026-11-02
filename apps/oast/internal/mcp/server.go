@@ -149,6 +149,22 @@ func failureWithData[T any](value T, err error) (*sdk.CallToolResult, envelope[T
 
 var errInvalidInput = errors.New("invalid input")
 
+// logToolError records a rejected or failed tool call. It logs only the tool
+// name and the safe, mapped error code — never the target, token, or raw
+// error — so logs cannot leak scope targets or secrets. Out-of-scope
+// rejections (code "unauthorized") and all other rejections are visible to an
+// operator; genuine internal failures are logged at error level.
+func (s *Server) logToolError(tool string, te *toolError) {
+	if te == nil {
+		return
+	}
+	if te.Code == "internal" {
+		s.logger.Error("mcp tool failed", "tool", tool, "code", te.Code)
+		return
+	}
+	s.logger.Warn("mcp tool rejected", "tool", tool, "code", te.Code)
+}
+
 func toolErrorFrom(err error) *toolError {
 	code := "internal"
 	message := "internal error"
