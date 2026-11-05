@@ -99,7 +99,8 @@ func (s *Server) registerTools() {
 	}, s.closeTest)
 }
 
-func (s *Server) createTest(ctx context.Context, _ *sdk.CallToolRequest, in createInput) (*sdk.CallToolResult, envelope[createOutput], error) {
+func (s *Server) createTest(ctx context.Context, _ *sdk.CallToolRequest, in createInput) (res *sdk.CallToolResult, env envelope[createOutput], err error) {
+	defer func() { s.logToolError("oast_create_test", env.Error) }()
 	if in.TTLSeconds < 0 || in.TTLSeconds > maxTTLSeconds {
 		return failure[createOutput](fmt.Errorf("%w: ttl_seconds must be between 0 and %d", errInvalidInput, maxTTLSeconds))
 	}
@@ -131,7 +132,8 @@ func (s *Server) createTest(ctx context.Context, _ *sdk.CallToolRequest, in crea
 	})
 }
 
-func (s *Server) getEvidence(ctx context.Context, _ *sdk.CallToolRequest, in getEvidenceInput) (*sdk.CallToolResult, envelope[getEvidenceOutput], error) {
+func (s *Server) getEvidence(ctx context.Context, _ *sdk.CallToolRequest, in getEvidenceInput) (res *sdk.CallToolResult, env envelope[getEvidenceOutput], err error) {
+	defer func() { s.logToolError("oast_get_evidence", env.Error) }()
 	testID := strings.TrimSpace(in.TestID)
 	if testID == "" {
 		return failure[getEvidenceOutput](fmt.Errorf("%w: test_id is required", errInvalidInput))
@@ -192,7 +194,8 @@ func filterEvidence(records []evidence.Record, after *uint64) []evidence.Record 
 	return out
 }
 
-func (s *Server) listTests(ctx context.Context, _ *sdk.CallToolRequest, in listInput) (*sdk.CallToolResult, envelope[listOutput], error) {
+func (s *Server) listTests(ctx context.Context, _ *sdk.CallToolRequest, in listInput) (res *sdk.CallToolResult, env envelope[listOutput], err error) {
+	defer func() { s.logToolError("oast_list_tests", env.Error) }()
 	if in.Limit < 0 || in.Limit > service.MaxListLimit {
 		return failure[listOutput](fmt.Errorf("%w: limit must be between 0 and %d", errInvalidInput, service.MaxListLimit))
 	}
@@ -225,7 +228,8 @@ func (s *Server) listTests(ctx context.Context, _ *sdk.CallToolRequest, in listI
 	})
 }
 
-func (s *Server) closeTest(ctx context.Context, _ *sdk.CallToolRequest, in closeInput) (*sdk.CallToolResult, envelope[closeOutput], error) {
+func (s *Server) closeTest(ctx context.Context, _ *sdk.CallToolRequest, in closeInput) (res *sdk.CallToolResult, env envelope[closeOutput], err error) {
+	defer func() { s.logToolError("oast_close_test", env.Error) }()
 	testID := strings.TrimSpace(in.TestID)
 	if testID == "" {
 		return failure[closeOutput](fmt.Errorf("%w: test_id is required", errInvalidInput))

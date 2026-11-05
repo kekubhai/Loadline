@@ -1,10 +1,13 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -495,5 +498,132 @@ func TestListDoesNotLeakRawBodyOrToken(t *testing.T) {
 	}
 	if strings.Contains(string(raw), test.Token) {
 		t.Fatalf("list leaked callback token: %s", raw)
+	}
+}
+
+func TestGetEvidenceRespectsContextCancellation(t *testing.T) {
+	server, _ := newTestServer(t)
+	session := connectClient(t, server)
+	created := createTest(t, session, "lab.local")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	type result struct {
+		res *sdk.CallToolResult
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		res, err := session.CallTool(ctx, &sdk.CallToolParams{
+			Name: "oast_get_evidence",
+			Arguments: map[string]any{
+				"test_id":      created.TestID,
+				"wait_seconds": maxWaitSeconds, // would otherwise block for 30s
+			},
+		})
+		done <- result{res, err}
+	}()
+
+	// Cancel the in-flight long poll. The handler polls in sub-second slices,
+	// so it must observe the cancellation and return well before the 30s bound.
+	cancel()
+
+	select {
+	case got := <-done:
+		// Either the transport reports the cancellation, or the tool returns a
+		// structured canceled/timeout error. It must never be a success.
+		if got.err != nil {
+			return
+		}
+		if got.res == nil || !got.res.IsError {
+			t.Fatalf("canceled long poll returned a non-error result: %+v", got.res)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("canceled long poll did not return promptly")
+	}
+}
+
+func TestCreateRejectsMalformedTargetViaMCP(t *testing.T) {
+	server, store := newTestServer(t)
+	session := connectClient(t, server)
+
+	for _, bad := range []string{"ftp://lab.local", "lab.local/with/path", "exa mple.com"} {
+		_, env, isErr := callTool[createOutput](t, session, "oast_create_test", map[string]any{
+			"target":            bad,
+			"authorization_ref": "ENG-123",
+		})
+		if !isErr || env.Error == nil || env.Error.Code != "invalid_input" {
+			t.Fatalf("target %q: expected invalid_input, got isError=%v env=%+v", bad, isErr, env)
+		}
+	}
+	// No test should have been created by any rejected request.
+	summaries, err := store.List(context.Background())
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(summaries) != 0 {
+		t.Fatalf("rejected malformed targets created %d tests", len(summaries))
+	}
+}
+
+// lockedBuffer is a concurrency-safe sink for captured log output.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func TestOutOfScopeRejectionIsLogged(t *testing.T) {
+	store, err := registry.NewMemory(registry.MemoryConfig{
+		MaxActiveTests:          10,
+		MaxTestLifetime:         time.Hour,
+		MaxEvidencePerTest:      100,
+		MaxEvidenceBytesPerTest: 1024 * 1024,
+	}, clock.System{}, token.CryptoGenerator{})
+	if err != nil {
+		t.Fatalf("NewMemory() error = %v", err)
+	}
+	scopes, err := scope.New([]string{"lab.local"})
+	if err != nil {
+		t.Fatalf("scope.New() error = %v", err)
+	}
+	svc, err := service.New(store, scopes, service.Config{DefaultTTL: time.Minute, MaxTTL: time.Hour})
+	if err != nil {
+		t.Fatalf("service.New() error = %v", err)
+	}
+
+	var logs lockedBuffer
+	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	server, err := New(Config{Service: svc, PublicDomain: "oast.local", HTTPPort: 8081, Logger: logger})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	session := connectClient(t, server)
+
+	// An out-of-scope target must be both rejected and logged.
+	_, env, isErr := callTool[createOutput](t, session, "oast_create_test", map[string]any{
+		"target":            "attacker.example",
+		"authorization_ref": "ENG-1",
+	})
+	if !isErr || env.Error == nil || env.Error.Code != "unauthorized" {
+		t.Fatalf("expected unauthorized rejection, got isError=%v env=%+v", isErr, env)
+	}
+	out := logs.String()
+	if !strings.Contains(out, "mcp tool rejected") || !strings.Contains(out, "code=unauthorized") {
+		t.Fatalf("rejection was not logged; logs=%q", out)
+	}
+	// The log must not leak the target host.
+	if strings.Contains(out, "attacker.example") {
+		t.Fatalf("log leaked the rejected target: %q", out)
 	}
 }
