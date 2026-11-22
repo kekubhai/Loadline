@@ -142,6 +142,10 @@ func ResolveService(id, provider, service string, cfg Config) (ResolvedSpec, err
 	rs.Assumptions = append(rs.Assumptions,
 		fmt.Sprintf("config: concurrency=%d queue_limit=%d (defaults %d/%d, %s)",
 			spec.Concurrency, spec.QueueLimit, cap.Concurrency, cap.QueueLimit, m.Scaling().Kind))
+	if primary, _ := kindForService(provider, service); spec.Kind != primary {
+		rs.Assumptions = append(rs.Assumptions,
+			fmt.Sprintf("runs as %s instead of its default %s role (declared on the component)", spec.Kind, primary))
+	}
 	if cfg.HitRatio > 0 {
 		rs.Assumptions = append(rs.Assumptions, fmt.Sprintf("cache hit ratio %.0f%% (user-supplied)", cfg.HitRatio*100))
 	}

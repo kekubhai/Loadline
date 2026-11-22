@@ -10,7 +10,7 @@
  */
 import { createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
-import { create as createMessage } from "@bufbuild/protobuf";
+import { clone, create as createMessage } from "@bufbuild/protobuf";
 import { SimulationService } from "./loadline/v1/simulation_pb";
 import { WorkspaceService } from "./loadline/v1/workspace_pb";
 import { ArenaService } from "./loadline/v1/arena_pb";
@@ -19,6 +19,10 @@ export * from "./loadline/v1/simulation_pb";
 export * from "./loadline/v1/workspace_pb";
 export * from "./loadline/v1/arena_pb";
 export { createMessage as create };
+// clone deep-copies a message. Use it (not create) to copy-on-write an
+// existing message: create(schema, msg) returns msg itself when it is
+// already a message of that schema, so mutating the "copy" mutates state.
+export { clone };
 
 export interface LoadlineClientOptions {
   /** Base URL of the Go Connect server, e.g. http://localhost:8080 */

@@ -191,6 +191,18 @@ describe("configure components", () => {
     expect(detached?.config).toBeUndefined();
     expect(detached?.provider).toBe("");
   });
+
+  it("switches a compute service into the queue-consumer role", () => {
+    const s = editorReducer(initialEditorState, {
+      type: "patchComponent",
+      id: "api",
+      patch: { kind: ComponentKind.WORKER },
+    });
+    const api = s.architecture.components.find((c) => c.id === "api");
+    expect(api?.kind).toBe(ComponentKind.WORKER);
+    // Role changes keep the catalog model attached.
+    expect(api?.provider).toBe("aws");
+  });
 });
 
 describe("configure workload and options", () => {
