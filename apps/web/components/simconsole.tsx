@@ -30,6 +30,7 @@ import {
   type SimulationOptions,
   type WorkloadSpec,
 } from "@loadline/api";
+import { Code, ConnectError } from "@connectrpc/connect";
 import { optionsForArchitecture } from "../app/editor";
 import { userError } from "../app/usererror";
 import { f0, f1, f2, kindName, pct } from "./format";
@@ -44,6 +45,34 @@ import {
   StatusIndicator,
   toneForWord,
 } from "./ui";
+
+/**
+ * StreamMetrics is resumable: a fresh subscription replays the latest
+ * snapshot and terminal frames. A dropped connection (proxy idle limits,
+ * mobile networks, serverless request caps) therefore reconnects instead
+ * of failing a run the engine is still executing.
+ */
+const STREAM_RECONNECTS = 5;
+const STREAM_BACKOFF_MS = 400;
+
+/** Transport-level stream failures worth a reconnect (not server verdicts). */
+export function isRetryableStreamError(err: unknown): boolean {
+  if (err instanceof ConnectError) {
+    return (
+      err.code === Code.Unavailable ||
+      err.code === Code.Unknown ||
+      err.code === Code.DeadlineExceeded ||
+      (err.code === Code.Internal && /network|stream|reset|terminated/i.test(err.rawMessage))
+    );
+  }
+  return err instanceof TypeError; // fetch/body-stream network failure
+}
+
+class StreamDropped extends Error {
+  constructor() {
+    super("metrics stream closed before the run finished");
+  }
+}
 
 /** Wall time the full horizon takes at 1× (the speed baseline). */
 const BASE_PACE_MS = 10_000;
@@ -294,39 +323,62 @@ export function SimConsole({
         // Let RunSimulation land first so the stream replays live state
         // instead of racing the start RPC.
         await new Promise((r) => setTimeout(r, 20));
-        const stream = client.streamMetrics({ simulationId: id });
         let gotResults: FinalResults | null = null;
-        for await (const ev of stream) {
-          if (!isCurrent()) return;
-          const event = ev.event;
-          switch (event.case) {
-            case "progress": {
-              const snap = event.value;
-              if (snap) {
-                setLive(snap);
-                setHistory((h) => [...h.slice(-119), snap]);
-              }
-              break;
-            }
-            case "control": {
-              const ctl: ControlFrame | undefined = event.value;
-              if (ctl) applyStatus(ctl.status);
-              break;
-            }
-            case "status":
-              if (event.value) {
-                applyStatus(event.value.status);
-                if (event.value.status === RunStatus.FAILED) {
-                  throw new Error(event.value.error || "simulation failed");
+        let terminal = false;
+        for (let attempt = 0; ; attempt++) {
+          try {
+            const stream = client.streamMetrics({ simulationId: id });
+            for await (const ev of stream) {
+              if (!isCurrent()) return;
+              attempt = 0; // a frame arrived: the connection is healthy
+              const event = ev.event;
+              switch (event.case) {
+                case "progress": {
+                  const snap = event.value;
+                  if (snap) {
+                    setLive(snap);
+                    setHistory((h) => [...h.slice(-119), snap]);
+                  }
+                  break;
                 }
+                case "control": {
+                  const ctl: ControlFrame | undefined = event.value;
+                  if (ctl) applyStatus(ctl.status);
+                  break;
+                }
+                case "status":
+                  if (event.value) {
+                    applyStatus(event.value.status);
+                    if (event.value.status === RunStatus.FAILED) {
+                      terminal = true;
+                      throw new Error(event.value.error || "simulation failed");
+                    }
+                  }
+                  break;
+                case "results":
+                  if (event.value) {
+                    gotResults = event.value;
+                    terminal = true;
+                    setResults(event.value);
+                  }
+                  break;
               }
-              break;
-            case "results":
-              if (event.value) {
-                gotResults = event.value;
-                setResults(event.value);
-              }
-              break;
+            }
+            // Closed without a terminal frame: a proxy or platform cut the
+            // stream. Reconnect like any other drop.
+            if (terminal || attempt >= STREAM_RECONNECTS) break;
+            throw new StreamDropped();
+          } catch (err) {
+            if (
+              terminal ||
+              !isCurrent() ||
+              attempt >= STREAM_RECONNECTS ||
+              !(err instanceof StreamDropped || isRetryableStreamError(err))
+            ) {
+              throw err;
+            }
+            await new Promise((r) => setTimeout(r, STREAM_BACKOFF_MS * 2 ** attempt));
+            if (!isCurrent()) return;
           }
         }
         if (statusRef.current === RunStatus.FAILED) {

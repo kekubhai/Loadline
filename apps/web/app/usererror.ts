@@ -86,6 +86,11 @@ function stripPrefixes(raw: string): string {
 function mapKnown(text: string): string | null {
   const lower = text.toLowerCase();
 
+  // The server process no longer holds this run: it restarted, or a
+  // different instance answered (runs live in one process's memory).
+  if (/simulation "?sim-[\w-]+"? not found/i.test(text) || /simulation \S+ already run_status_failed/i.test(text)) {
+    return "the simulation server lost this run (it restarted or another server instance answered) — press run again";
+  }
   if (lower.includes("dependency cycle")) {
     return "this architecture has a cycle — every path from the client must end without looping back";
   }

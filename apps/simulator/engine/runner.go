@@ -16,12 +16,19 @@ import (
 //	→ handler schedules new events → repeat
 //
 // Simulated time advances only by jumping to event timestamps. The runner
-// performs no wall-clock sleeps of its own except when a pacing tick is
-// configured: in that mode it processes one event per tick and sleeps the
-// per-tick interval between events, which makes long runs observable (and
-// pausable/stoppable) from the outside. Tick pacing changes nothing about
-// event ordering or results — the same schedule executes in the same order
-// either way; only its wall-clock duration differs.
+// performs no wall-clock sleeps of its own unless pacing is configured,
+// which makes long runs observable (and pausable/stoppable) from the
+// outside. Two pacing modes exist:
+//
+//   - Pace (preferred): wall time is slaved to simulated time — an event
+//     at simulated instant T runs no earlier than anchor + T×pace of wall
+//     time. Sleeps are coalesced, so the wall duration of a run follows
+//     its horizon no matter how many events it contains.
+//   - Tick (legacy): one sleep per processed event.
+//
+// Pacing changes nothing about event ordering or results — the same
+// schedule executes in the same order either way; only its wall-clock
+// duration differs.
 //
 // Handler panics propagate to the caller — the engine does not swallow bugs.
 type Runner struct {
@@ -51,6 +58,18 @@ type Runner struct {
 	// tickMu; use SetTick/tickDelay for cross-goroutine access.
 	Tick   time.Duration
 	tickMu sync.Mutex
+
+	// pace is wall-clock nanoseconds per simulated nanosecond (0 = off).
+	// anchorWall/anchorSim pin the wall↔sim mapping; anchored=false makes
+	// the next paced event re-anchor (after SetPace or a long stall).
+	// Guarded by paceMu except anchor fields, which only the run loop
+	// touches after reading pace.
+	pace       float64
+	paceMu     sync.Mutex
+	reanchor   bool
+	anchorWall time.Time
+	anchorSim  Time
+	anchored   bool
 
 	// stopped is set by Stop: after the in-flight event finishes, the run
 	// ends with StopReason "stopped" and the remaining queue is preserved.
@@ -94,6 +113,93 @@ func (r *Runner) tickDelay() time.Duration {
 	return r.Tick
 }
 
+// SetPace slaves wall-clock time to simulated time: each simulated
+// nanosecond takes `wallPerSim` wall nanoseconds (1.0 = real time, 0.02 =
+// 50× faster). Zero disables pace-based pacing. Safe to call from another
+// goroutine while the run loop executes; the mapping is re-anchored at
+// the next event so a speed change never causes a catch-up burst or stall.
+func (r *Runner) SetPace(wallPerSim float64) {
+	if wallPerSim < 0 {
+		wallPerSim = 0
+	}
+	r.paceMu.Lock()
+	r.pace = wallPerSim
+	r.reanchor = true
+	r.paceMu.Unlock()
+}
+
+// currentPace returns the pace and whether the run loop must re-anchor.
+func (r *Runner) currentPace() (float64, bool) {
+	r.paceMu.Lock()
+	defer r.paceMu.Unlock()
+	re := r.reanchor
+	r.reanchor = false
+	return r.pace, re
+}
+
+const (
+	// paceMinSleep coalesces sleeps: being ahead of schedule by less than
+	// this is absorbed instead of paying for a timer (sub-millisecond
+	// sleeps routinely overshoot, which is what made per-event ticks run
+	// several times slower than requested).
+	paceMinSleep = 2 * time.Millisecond
+	// paceMaxSlice bounds one sleep so Stop/Pause stay responsive when
+	// events are sparse (one event per simulated second at 1× would
+	// otherwise sleep a full second).
+	paceMaxSlice = 25 * time.Millisecond
+	// paceMaxLag re-anchors when the loop falls this far behind schedule
+	// (CPU-bound stretch, resumed pause) so it never "catches up" by
+	// skipping pacing for a long burst.
+	paceMaxLag = 250 * time.Millisecond
+)
+
+// waitForPace blocks until the wall clock reaches the paced instant of
+// simulated time `at`. It returns false when a Stop or Pause request
+// arrives while waiting; the caller must then put the event back.
+func (r *Runner) waitForPace(at Time) bool {
+	pace, re := r.currentPace()
+	if pace <= 0 {
+		r.anchored = false
+		return true
+	}
+	now := time.Now()
+	if re || !r.anchored {
+		r.anchorWall, r.anchorSim, r.anchored = now, at, true
+		return true
+	}
+	target := r.anchorWall.Add(time.Duration(float64(at-r.anchorSim) * pace))
+	ahead := target.Sub(now)
+	if ahead < -paceMaxLag {
+		r.anchorWall, r.anchorSim = now, at
+		return true
+	}
+	for ahead >= paceMinSleep {
+		slice := ahead
+		if slice > paceMaxSlice {
+			slice = paceMaxSlice
+		}
+		time.Sleep(slice)
+		if r.isStopped() || r.Paused() {
+			return false
+		}
+		// A speed change mid-wait re-anchors on the next call.
+		r.paceMu.Lock()
+		changed := r.reanchor
+		r.paceMu.Unlock()
+		if changed {
+			return true
+		}
+		ahead = target.Sub(time.Now())
+	}
+	return true
+}
+
+func (r *Runner) isStopped() bool {
+	r.stopMu.Lock()
+	defer r.stopMu.Unlock()
+	return r.stopped
+}
+
 // Pause suspends the run at the current simulated instant. The in-flight
 // event completes; then the loop idles until Resume. Returns false when
 // the run has already stopped.
@@ -115,6 +221,9 @@ func (r *Runner) Pause() bool {
 
 // Resume lifts a pause and wakes the run loop.
 func (r *Runner) Resume() {
+	r.paceMu.Lock()
+	r.reanchor = true // paused wall time must not count as lag
+	r.paceMu.Unlock()
 	r.pauseMu.Lock()
 	wasPaused := r.paused
 	r.paused = false
@@ -194,6 +303,18 @@ func (r *Runner) Run() *Results {
 			results.StopReason = StopMaxEvents
 			r.scheduler.queue.Push(e) // never lose a pending event
 			break
+		}
+
+		// Pace wall time to simulated time before executing the event. An
+		// interrupted wait puts the event back untouched: Stop ends the
+		// run with the queue intact; Pause idles at the top of the loop.
+		if !r.waitForPace(e.Timestamp) {
+			r.scheduler.queue.Push(e)
+			if r.isStopped() {
+				r.finishStopped(results)
+				return results
+			}
+			continue
 		}
 
 		// Advance simulated time by jumping — never by sleeping.

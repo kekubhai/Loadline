@@ -33,6 +33,7 @@ import type {
   StreamMetricsResponse,
   ProgressSnapshot,
 } from "@loadline/api";
+import { Code, ConnectError } from "@connectrpc/connect";
 import { SimConsole, type SimOutcome } from "./simconsole";
 
 /* ------------------------------------------------------------- fixtures -- */
@@ -255,6 +256,66 @@ describe("SimConsole run lifecycle", () => {
     await user.click(screen.getByRole("button", { name: "run" }));
     await waitFor(() => expect(outcomes).toEqual([{ status: "failed", simId: "sim-77" }]));
     expect(await screen.findByText(/this architecture has a cycle/i)).toBeInTheDocument();
+  });
+
+  it("reconnects when the metrics stream drops mid-run and still completes", async () => {
+    let attempts = 0;
+    mockClientFactory = () =>
+      mockClient({
+        stream: async function* (id) {
+          attempts++;
+          if (attempts === 1) {
+            yield frame("progress", snapshot());
+            throw new ConnectError("network error", Code.Unknown);
+          }
+          yield frame("status", create(GetSimulationStatusResponseSchema, { simulationId: id, status: RunStatus.COMPLETED }));
+          yield frame("results", finalResults);
+        },
+      });
+    const user = userEvent.setup();
+    const { outcomes } = renderConsole();
+    await user.click(screen.getByRole("button", { name: "run" }));
+    await waitFor(() => expect(outcomes).toEqual([{ status: "completed", simId: "sim-77" }]), { timeout: 3000 });
+    expect(attempts).toBe(2);
+  });
+
+  it("reconnects when the stream closes before any terminal frame", async () => {
+    let attempts = 0;
+    mockClientFactory = () =>
+      mockClient({
+        stream: async function* (id) {
+          attempts++;
+          if (attempts === 1) {
+            yield frame("progress", snapshot());
+            return; // proxy closed the response cleanly
+          }
+          yield frame("status", create(GetSimulationStatusResponseSchema, { simulationId: id, status: RunStatus.COMPLETED }));
+          yield frame("results", finalResults);
+        },
+      });
+    const user = userEvent.setup();
+    const { outcomes } = renderConsole();
+    await user.click(screen.getByRole("button", { name: "run" }));
+    await waitFor(() => expect(outcomes).toEqual([{ status: "completed", simId: "sim-77" }]), { timeout: 3000 });
+    expect(attempts).toBe(2);
+  });
+
+  it("does not retry when the server no longer has the run", async () => {
+    let attempts = 0;
+    mockClientFactory = () =>
+      mockClient({
+        // eslint-disable-next-line require-yield
+        stream: async function* () {
+          attempts++;
+          throw new ConnectError('simulation "sim-77" not found', Code.NotFound);
+        },
+      });
+    const user = userEvent.setup();
+    const { outcomes } = renderConsole();
+    await user.click(screen.getByRole("button", { name: "run" }));
+    await waitFor(() => expect(outcomes).toEqual([{ status: "failed", simId: "sim-77" }]));
+    expect(attempts).toBe(1);
+    expect(await screen.findByText(/lost this run/i)).toBeInTheDocument();
   });
 
   it("stop issues the control RPC and terminal STOPPED frames produce a stopped outcome with partial results", async () => {

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/kekubhai/Loadline/apps/simulator/engine"
 	"github.com/kekubhai/Loadline/apps/simulator/workload"
@@ -41,9 +40,9 @@ func (p *PacedRun) WaitResult() *RunResult {
 // StartPaced validates inputs exactly like Simulate, then executes the
 // simulation on a background goroutine at a wall-clock pace:
 //
-//	wallDurationMS = 0 → tick = 0 → run as fast as possible
+//	wallDurationMS = 0 → run as fast as possible
 //	wallDurationMS > 0 → the full horizon takes that much wall time,
-//	adjustable live via the runner's SetTick (the speed buttons).
+//	adjustable live via the runner's SetPace (the speed buttons).
 //
 // Progress snapshots flow through opts.Progress exactly as in Simulate.
 // Event ordering, RNG consumption, and results are identical to Simulate
@@ -131,23 +130,12 @@ func StartPaced(arch Architecture, spec workload.Spec, opts Options, wallDuratio
 		})
 	}
 
-	// Wall-clock pacing: tick = wall duration ÷ estimated event budget.
-	// The budget estimate only scales the initial tick; the API layer's
-	// speed control re-targets it live anyway.
-	const eventsPerSimMS = 2 // conservative: larger budget → smaller tick
-	var tick time.Duration   // zero default: as fast as possible
-	if wallDurationMS > 0 {
-		budget := int64(opts.DurationMS * eventsPerSimMS)
-		if budget < 1 {
-			budget = 1
-		}
-		tickNS := int64(wallDurationMS * float64(time.Millisecond) / float64(budget))
-		if tickNS < 1 {
-			tickNS = 1
-		}
-		tick = time.Duration(tickNS)
-	}
-	runner.SetTick(tick)
+	// Wall-clock pacing slaves wall time to simulated time: the full
+	// horizon takes wallDurationMS no matter how many events it contains.
+	// (The previous per-event tick assumed ~2 events per simulated ms; a
+	// busy architecture produces 5–10× that, so a "10 s" run took minutes
+	// and outlived the client's stream.)
+	runner.SetPace(paceFor(wallDurationMS, opts.DurationMS))
 
 	done := make(chan struct{})
 	p := &PacedRun{control: runner, done: done}
@@ -194,3 +182,15 @@ func (p *PacedRun) setErr(err error) {
 
 // SetTick re-targets the wall-clock pace of a live run (speed control).
 // Implemented on *engine.Runner; see engine/runner.go.
+
+// PaceFor converts "the whole horizon should take wallDurationMS of wall
+// time" into the runner's wall-per-simulated-time ratio. Zero or negative
+// wall durations mean as fast as possible.
+func PaceFor(wallDurationMS, horizonMS float64) float64 { return paceFor(wallDurationMS, horizonMS) }
+
+func paceFor(wallDurationMS, horizonMS float64) float64 {
+	if wallDurationMS <= 0 || horizonMS <= 0 {
+		return 0
+	}
+	return wallDurationMS / horizonMS
+}
