@@ -14,6 +14,13 @@ describe("userError / userErrorText", () => {
     );
   });
 
+  it("explains runs lost by a restarted or different server instance", () => {
+    expect(userErrorText('[not_found] simulation "sim-3" not found')).toMatch(/lost this run/i);
+    expect(userErrorText("[failed_precondition] simulation sim-1 already RUN_STATUS_FAILED")).toMatch(
+      /lost this run/i,
+    );
+  });
+
   it("maps engine architecture rejections without Go prefixes", () => {
     expect(
       userErrorText(

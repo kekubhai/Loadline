@@ -6,7 +6,6 @@ import (
 	"sort"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"connectrpc.com/connect"
 	"github.com/kekubhai/Loadline/apps/simulator/engine"
@@ -303,31 +302,20 @@ func (s *Service) SetWallDuration(ctx context.Context, req *connect.Request[v1.S
 	}), nil
 }
 
-// applyWallDuration converts a wall duration for the full horizon into
-// the per-event tick (the engine's pacing primitive). wallDurationMS ≤ 0
-// restores as-fast-as-possible.
+// applyWallDuration re-targets pacing so the full horizon takes
+// wallDurationMS of wall time (wall time is slaved to simulated time, so
+// this holds regardless of event density). wallDurationMS ≤ 0 restores
+// as-fast-as-possible.
 func applyWallDuration(ctl sim.SimRunControl, wallDurationMS, horizonMS float64) {
 	runner, ok := ctl.(*engine.Runner)
 	if !ok {
 		return
 	}
-	if wallDurationMS <= 0 {
-		runner.SetTick(0)
-		return
-	}
 	if horizonMS <= 0 {
 		horizonMS = 60_000
 	}
-	const eventsPerSimMS = 2 // mirrors sim.StartPaced's estimate
-	budget := int64(horizonMS * eventsPerSimMS)
-	if budget < 1 {
-		budget = 1
-	}
-	tickNS := int64(wallDurationMS * float64(time.Millisecond) / float64(budget))
-	if tickNS < 1 {
-		tickNS = 1
-	}
-	runner.SetTick(time.Duration(tickNS))
+	runner.SetTick(0)
+	runner.SetPace(sim.PaceFor(wallDurationMS, horizonMS))
 }
 
 // currentStatus reads the run's status safely.
