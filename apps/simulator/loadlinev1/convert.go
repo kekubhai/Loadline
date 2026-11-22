@@ -98,6 +98,11 @@ func protoArchToDomain(pb *v1.Architecture) (sim.Architecture, []providers.Resol
 				MemoryMB:    int(cfg.GetMemoryMb()),
 				StorageGB:   cfg.GetStorageGb(),
 				HitRatio:    hit,
+				// The declared kind selects the service's role: a Worker
+				// wired as a queue consumer must stay a worker, not be
+				// silently rewritten into an API server (which then fails
+				// queue/worker validation with a misleading message).
+				Kind: kind,
 			})
 			if err != nil {
 				return sim.Architecture{}, nil, fmt.Errorf("component %q: %w", c.GetId(), err)

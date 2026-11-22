@@ -54,7 +54,7 @@ func (g *GenericService) BuildSpec(id string, cfg Config) (sim.ComponentSpec, er
 		return sim.ComponentSpec{}, fmt.Errorf("providers: component ID must not be empty")
 	}
 
-	kind, err := kindForService(g.provider, g.service)
+	kind, err := ResolveKind(g.provider, g.service, cfg.Kind)
 	if err != nil {
 		return sim.ComponentSpec{}, err
 	}
@@ -117,4 +117,59 @@ func kindForService(provider, service string) (sim.ComponentKind, error) {
 		return sim.KindCache, nil
 	}
 	return "", fmt.Errorf("providers: no kind mapping for %s/%s", provider, service)
+}
+
+// alternateRoles lists the extra generic kinds a catalog service may play
+// besides its primary kindForService mapping. Compute services that run
+// arbitrary code can be deployed as a queue's consumer (Cloudflare Queues
+// consumer Workers, Lambda event-source mappings on SQS, Cloud Run push
+// subscriptions on Pub/Sub, an EC2 worker fleet). Coordination/storage
+// services cannot: a Durable Object is not a queue consumer.
+var alternateRoles = map[string][]sim.ComponentKind{
+	"cloudflare/workers": {sim.KindWorker},
+	"aws/lambda":         {sim.KindWorker},
+	"aws/ec2":            {sim.KindWorker},
+	"gcp/cloud_run":      {sim.KindWorker},
+}
+
+// ResolveKind returns the generic kind a provider-backed component runs as.
+// requested is the kind declared on the architecture document ("" when the
+// caller has none). The service's primary kind is used when nothing is
+// requested or when the request matches it; an alternate role is honored
+// when the service supports it; anything else is an error, so a document
+// that asks for an impossible role fails loudly instead of being silently
+// rewritten into a different shape.
+func ResolveKind(provider, service string, requested sim.ComponentKind) (sim.ComponentKind, error) {
+	primary, err := kindForService(provider, service)
+	if err != nil {
+		return "", err
+	}
+	if requested == "" || requested == primary {
+		return primary, nil
+	}
+	for _, k := range alternateRoles[provider+"/"+service] {
+		if k == requested {
+			return k, nil
+		}
+	}
+	return "", fmt.Errorf("providers: %s/%s cannot run as %s (supported: %s)",
+		provider, service, requested, supportedRoles(provider, service, primary))
+}
+
+// SupportedKinds lists every generic kind the service can run as, primary
+// first. Used by the catalog API so editors can offer the valid roles.
+func SupportedKinds(provider, service string) ([]sim.ComponentKind, error) {
+	primary, err := kindForService(provider, service)
+	if err != nil {
+		return nil, err
+	}
+	return append([]sim.ComponentKind{primary}, alternateRoles[provider+"/"+service]...), nil
+}
+
+func supportedRoles(provider, service string, primary sim.ComponentKind) string {
+	out := string(primary)
+	for _, k := range alternateRoles[provider+"/"+service] {
+		out += ", " + string(k)
+	}
+	return out
 }

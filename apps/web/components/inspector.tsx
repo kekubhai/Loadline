@@ -49,6 +49,8 @@ export interface ComponentPatch {
   id?: string;
   provider?: string;
   service?: string;
+  /** Generic role (ComponentKind) — e.g. a compute service as a queue consumer. */
+  kind?: number;
   concurrency?: number;
   queueLimit?: number;
   capacityRps?: number;
@@ -596,6 +598,26 @@ function ComponentView({
               <KV k="default service" v={`${f2(svc.defaultServiceTimeMs)} ms`} />
             </div>
           </Section>
+          {kindFromProtoName(svc.componentKind) === ComponentKind.API_SERVER && (
+            <Section label="role">
+              <Row label="runs as">
+                <Select
+                  value={String(comp.kind)}
+                  onChange={(v) => patch({ kind: Number(v) })}
+                  width={150}
+                  options={[
+                    { value: String(ComponentKind.API_SERVER), label: "api server" },
+                    { value: String(ComponentKind.WORKER), label: "queue consumer" },
+                  ]}
+                />
+              </Row>
+              <p className="prose prose-dim">
+                a queue consumer is drained by exactly one queue and ends its
+                flow. the simulator rejects services that cannot consume a
+                queue.
+              </p>
+            </Section>
+          )}
           <Section label="provider overrides">
             <Row label="concurrency">
               <IntInput

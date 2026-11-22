@@ -149,6 +149,11 @@ type Config struct {
 	StorageGB float64
 	// HitRatio applies to caches (ElastiCache, Memorystore, KV, CDN).
 	HitRatio float64
+	// Kind is the generic role the document asks the service to play.
+	// Empty means the service's primary role. See ResolveKind for which
+	// alternate roles a service supports (e.g. Workers as a queue
+	// consumer).
+	Kind sim.ComponentKind
 }
 
 // resolved merges cfg onto a base spec.

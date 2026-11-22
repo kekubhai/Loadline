@@ -17,6 +17,7 @@ import {
   ProviderConfigSchema,
   SimulationOptionsSchema,
   WorkloadSpecSchema,
+  clone,
   create,
 } from "@loadline/api";
 import type {
@@ -136,10 +137,11 @@ export function editorReducer(s: EditorState, a: EditAction): EditorState {
     case "patchComponent": {
       const components = s.architecture.components.map((c) => {
         if (c.id !== a.id) return c;
-        const next = create(ComponentSpecSchema, c);
+        const next = clone(ComponentSpecSchema, c);
         const p = a.patch;
         if (p.provider !== undefined) next.provider = p.provider;
         if (p.service !== undefined) next.service = p.service;
+        if (p.kind !== undefined) next.kind = p.kind;
         if (p.concurrency !== undefined) next.concurrency = p.concurrency;
         if (p.queueLimit !== undefined) next.queueLimit = p.queueLimit;
         if (p.capacityRps !== undefined) next.capacityRps = p.capacityRps;
@@ -151,7 +153,9 @@ export function editorReducer(s: EditorState, a: EditAction): EditorState {
           if (p.config === null) {
             next.config = undefined;
           } else {
-            const merged = create(ProviderConfigSchema, c.config);
+            const merged = c.config
+              ? clone(ProviderConfigSchema, c.config)
+              : create(ProviderConfigSchema);
             const partial = p.config;
             if (partial.concurrency !== undefined)
               merged.concurrency = partial.concurrency;
